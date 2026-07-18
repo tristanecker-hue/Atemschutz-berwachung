@@ -203,46 +203,6 @@ function useBeeper() {
   return beep;
 }
 
-// ---------- graphical Druckverlauf for the PDF / detail report ----------
-function PressureHistoryChart({ tr, verbrauchFallback }) {
-  const entries = pressureEntries(tr).slice().reverse(); // chronological ascending
-  if (entries.length === 0) return null;
-
-  const width = 480, height = 160, padL = 34, padR = 12, padT = 12, padB = 22;
-  const t0 = entries[0].time;
-  const t1 = entries[entries.length - 1].time;
-  const tSpan = Math.max(1, t1 - t0);
-  const maxP = Math.max(tr.einstiegsdruck || 0, ...entries.map((e) => e.pressure), 50);
-  const xFor = (t) => (entries.length === 1 ? padL : padL + ((t - t0) / tSpan) * (width - padL - padR));
-  const yFor = (p) => padT + (1 - Math.max(0, Math.min(p, maxP)) / maxP) * (height - padT - padB);
-
-  const verbrauch = truppVerbrauch(tr, verbrauchFallback);
-  const effectiveAnmarschzeit = tr.zielErreichtTime && tr.startTime ? (tr.zielErreichtTime - tr.startTime) / 60000 : 0;
-  const rueckzugsdruck = Math.max(50, effectiveAnmarschzeit * verbrauch * 1.1);
-  const points = entries.map((e) => `${xFor(e.time)},${yFor(e.pressure)}`).join(" ");
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ marginBottom: 10, maxWidth: 480 }}>
-      <line x1={padL} y1={padT} x2={padL} y2={height - padB} stroke="#999" strokeWidth="1" />
-      <line x1={padL} y1={height - padB} x2={width - padR} y2={height - padB} stroke="#999" strokeWidth="1" />
-      <line x1={padL} y1={yFor(50)} x2={width - padR} y2={yFor(50)} stroke="#D9483D" strokeDasharray="4,3" strokeWidth="1" />
-      {rueckzugsdruck > 50 && (
-        <line x1={padL} y1={yFor(rueckzugsdruck)} x2={width - padR} y2={yFor(rueckzugsdruck)} stroke="#E8912D" strokeDasharray="4,3" strokeWidth="1" />
-      )}
-      <text x={2} y={yFor(maxP) + 4} fontSize="9" fill="#555">{Math.round(maxP)}</text>
-      <text x={2} y={yFor(0) + 4} fontSize="9" fill="#555">0</text>
-      <text x={width - padR - 26} y={yFor(50) - 4} fontSize="8" fill="#D9483D">50 bar</text>
-      {rueckzugsdruck > 50 && (
-        <text x={width - padR - 46} y={yFor(rueckzugsdruck) - 4} fontSize="8" fill="#E8912D">Rückzug {Math.round(rueckzugsdruck)}</text>
-      )}
-      {entries.length > 1 && <polyline points={points} fill="none" stroke="#3E8E41" strokeWidth="2" />}
-      {entries.map((e, i) => (
-        <circle key={i} cx={xFor(e.time)} cy={yFor(e.pressure)} r="3" fill="#1A1D21" />
-      ))}
-    </svg>
-  );
-}
-
 // ---------- printable / on-screen report for a single Trupp ----------
 function TruppReport({ tr, verbrauchFallback }) {
   const log = tr.pressureLog || [];
@@ -259,7 +219,11 @@ function TruppReport({ tr, verbrauchFallback }) {
   return (
     <div className="au-report">
       <div className="au-report-head">
-        <div className="au-report-title">{tr.truppfuehrer || "Trupp"}</div>
+        <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
+        <div style={{ flex: 1 }}>
+          <div className="au-report-title">{tr.truppfuehrer || "Trupp"}</div>
+          {tr.einsatzort && <div className="au-report-einsatzort">{tr.einsatzort}</div>}
+        </div>
         <div className="au-report-status">{statusLabel}</div>
       </div>
       {members.length > 0 && <div className="au-report-sub">Mitglieder: {members.join(", ")}</div>}
@@ -281,8 +245,6 @@ function TruppReport({ tr, verbrauchFallback }) {
           <tr><td>Gesamtdauer</td><td>{fmtElapsedShort(durationMs)}</td></tr>
         </tbody>
       </table>
-      <div className="au-report-subtitle">Druckverlauf</div>
-      <PressureHistoryChart tr={tr} verbrauchFallback={verbrauchFallback} />
       <div className="au-report-subtitle">Druckabfragen</div>
       <table className="au-report-table au-report-log">
         <thead>
@@ -608,6 +570,23 @@ function AtemschutzUeberwachung() {
   const activeTrupps = trupps.filter((t) => t.status !== "done");
   const doneTrupps = trupps.filter((t) => t.status === "done");
 
+  const truppRank = (t) => {
+    if (t.status === "bereit") return 3;
+    const { state } = computeTrupp(t);
+    if (state === "alarm") return 0;
+    if (state === "warn") return 1;
+    return 2;
+  };
+  const sortedActiveTrupps = [...activeTrupps].sort((a, b) => truppRank(a) - truppRank(b));
+
+  const globalAlertLevel = activeTrupps.reduce((level, t) => {
+    if (t.status === "bereit") return level;
+    const { state } = computeTrupp(t);
+    if (state === "alarm") return "alarm";
+    if (state === "warn" && level !== "alarm") return "warn";
+    return level;
+  }, null);
+
   const findTruppById = (id) =>
     trupps.find((t) => t.id === id) ||
     einsaetze.flatMap((ein) => ein.trupps || []).find((t) => t.id === id);
@@ -760,6 +739,10 @@ function AtemschutzUeberwachung() {
       /* ---- card ---- */
       .au-card { background: #fff; border-radius: 16px; margin-bottom: 14px; overflow: hidden; border: 1px solid #E4E7EB; box-shadow: 0 1px 3px rgba(20,22,26,0.04); }
       .au-card.alarm { border-color: #D9483D; animation: au-pulse 1.2s ease-in-out infinite; }
+      .au-alert-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 60; animation: au-alert-blink 1s steps(1) infinite; }
+      .au-alert-overlay.warn { background: rgba(232, 145, 45, 0.28); }
+      .au-alert-overlay.alarm { background: rgba(217, 72, 61, 0.32); }
+      @keyframes au-alert-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
       @keyframes au-pulse { 0%, 100% { background: #fff; } 50% { background: #FCEEEC; } }
       .au-gaugewrap { display: flex; flex-direction: column; align-items: center; padding: 18px 16px 6px; }
       .au-gauge-value { font-size: 40px; font-weight: 700; margin-top: -34px; letter-spacing: -0.02em; }
@@ -824,9 +807,11 @@ function AtemschutzUeberwachung() {
       }
       .au-report { padding: 14px 0 26px; border-bottom: 1px dashed #999; page-break-after: always; }
       .au-report:last-child { page-break-after: auto; }
-      .au-report-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+      .au-report-head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
+      .au-report-logo { width: 44px; height: 44px; object-fit: contain; background: #000; border-radius: 8px; flex-shrink: 0; }
       .au-report-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 20px; text-transform: uppercase; }
-      .au-report-status { font-size: 13px; color: #444; }
+      .au-report-einsatzort { font-size: 14px; color: #333; font-weight: 600; margin-top: 2px; }
+      .au-report-status { font-size: 13px; color: #444; flex-shrink: 0; }
       .au-report-sub { font-size: 13px; color: #444; margin-bottom: 10px; }
       .au-report-subtitle { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; text-transform: uppercase; margin: 14px 0 6px; }
       .au-report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 4px; }
@@ -972,6 +957,7 @@ function AtemschutzUeberwachung() {
   return (
     <div className="au-app au-root">
       {styleBlock}
+      {globalAlertLevel && <div className={`au-alert-overlay ${globalAlertLevel}`} />}
       <div className="au-header">
         <div className="au-header-left">
           <button className="au-home" onClick={() => setScreen("start")}>← Start</button>
@@ -1038,7 +1024,7 @@ function AtemschutzUeberwachung() {
         )}
 
         <div className="au-trupp-grid">
-        {activeTrupps.map((tr) => {
+        {sortedActiveTrupps.map((tr) => {
           if (tr.status === "bereit") {
             const members = [tr.adf1, tr.adf2, tr.adf3].filter(Boolean);
             return (
