@@ -42,20 +42,6 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const COLLECTION = "atemschutz";
 
-// ------------------------------------------------------------
-// window.storage: dieselbe Grund-Schnittstelle wie in der Claude-Vorschau
-// (get/set/delete/list), zusätzlich:
-//   - subscribeOnce(key, onUpdate): liefert den aktuellen Wert sofort UND ruft
-//     onUpdate bei jeder externen Änderung erneut auf (Echtzeit-Sync).
-//   - addDocument/deleteDocument/updateDocument/subscribeCollection: für die
-//     Atemschutz-Infos (Fotos/PDFs) – jede Datei ist ein eigenes Firestore-
-//     Dokument (max. 1 MB), statt alle zusammen in einem einzigen Datensatz.
-//     Dadurch reicht der kostenlose Firestore-Plan aus, ganz ohne Firebase
-//     Storage bzw. Rechnungskonto (Blaze). Fotos werden vor dem Speichern im
-//     Browser verkleinert/komprimiert (siehe compressImageToDataUrl im Code).
-// Ein einfacher "letzter geschriebener Wert"-Abgleich verhindert, dass die
-// eigene Schreibung als externe Änderung zurück-getriggert wird.
-// ------------------------------------------------------------
 window.storage = {
   _lastWritten: {},
 
@@ -92,9 +78,6 @@ window.storage = {
     } catch (e) { return { keys: [] }; }
   },
 
-  // Liefert den aktuellen Wert sofort (Promise löst nach erster Antwort auf) und
-  // ruft danach onUpdate(value) bei jeder Änderung erneut auf. Gibt eine
-  // Unsubscribe-Funktion zurück (via Promise-Resolve).
   subscribeOnce: function (key, onUpdate) {
     return new Promise((resolve) => {
       let first = true;
@@ -112,7 +95,6 @@ window.storage = {
     });
   },
 
-  // --- Ein-Dokument-pro-Datei-Speicherung für die Atemschutz-Infos ---
   addDocument: async function (name, data) {
     const ref = await db.collection(COLLECTION + "_" + name + "_items").add(data);
     return ref.id;
@@ -432,6 +414,7 @@ const DEFAULT_SETTINGS = {
   flascheninhalt: 6,
   belastungsstufe: "marsch",
   warnSoundEnabled: true,
+  alarmSoundEnabled: true,
 };
 
 function AtemschutzUeberwachung() {
@@ -440,6 +423,7 @@ function AtemschutzUeberwachung() {
   const [now, setNow] = useState(Date.now());
   const [showForm, setShowForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [muted, setMuted] = useState({});
   const [pressureInputs, setPressureInputs] = useState({});
@@ -663,7 +647,7 @@ function AtemschutzUeberwachung() {
     trupps.forEach((tr) => {
       if (tr.status === "done" || tr.status === "bereit") return;
       const { remaining, state, last, secondsToNextQuery } = computeTrupp(tr);
-      if (state === "alarm" && !muted[tr.id]) {
+      if (state === "alarm" && !muted[tr.id] && settings.alarmSoundEnabled) {
         const lastBeep = lastAlarmBeep.current[tr.id] || 0;
         if (now - lastBeep > 4000) {
           beep(1046, 0.25);
@@ -685,7 +669,7 @@ function AtemschutzUeberwachung() {
         }
       }
     });
-  }, [now, trupps, muted, beep, computeTrupp, settings.warnSoundEnabled]);
+  }, [now, trupps, muted, beep, computeTrupp, settings.warnSoundEnabled, settings.alarmSoundEnabled]);
 
   const addTrupp = () => {
     if (!form.truppfuehrer.trim()) return;
@@ -1193,14 +1177,6 @@ function AtemschutzUeberwachung() {
               </div>
             </div>
 
-            <label className="au-checkbox-row">
-              <input
-                type="checkbox"
-                checked={settings.warnSoundEnabled}
-                onChange={(e) => setSettings((s) => ({ ...s, warnSoundEnabled: e.target.checked }))}
-              />
-              Ton bei Erreichen des Rückzugsdrucks
-            </label>
             <div className="au-field">
               <label>Abfragezeit</label>
               <div className="au-slider-value">{settings.abfragezeit} min</div>
@@ -1221,6 +1197,24 @@ function AtemschutzUeberwachung() {
                 <span>1</span><span>10</span>
               </div>
             </div>
+
+            <p className="au-modal-subtitle">Alarmtöne</p>
+            <label className="au-checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.warnSoundEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, warnSoundEnabled: e.target.checked }))}
+              />
+              Ton bei Rückzugsdruck
+            </label>
+            <label className="au-checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.alarmSoundEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, alarmSoundEnabled: e.target.checked }))}
+              />
+              Ton bei Umkehrdruck (50 bar)
+            </label>
 
             {trupps.length > 0 && (
               <button
@@ -1245,7 +1239,7 @@ function AtemschutzUeberwachung() {
             ) : (
               <div style={{ marginBottom: 8 }}>
                 <div className="au-row-sub" style={{ marginBottom: 8 }}>
-                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" und leert das aktuelle Dashboard für den nächsten Einsatz.
+                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" (Admin-Menü) und leert das aktuelle Dashboard für den nächsten Einsatz.
                 </div>
                 <div className="au-formbtns">
                   <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
@@ -1253,15 +1247,28 @@ function AtemschutzUeberwachung() {
                 </div>
               </div>
             )}
-            {einsaetze.length > 0 && (
-              <button
-                className="au-btn au-btn-ghost"
-                style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowSettings(false); setScreen("archiv"); }}
-              >
-                📁 Vergangene Einsätze ansehen ({einsaetze.length})
-              </button>
-            )}
+
+            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
+              Fertig
+            </button>
+          </div>
+        </div>
+      );
+
+      const adminModal = showAdmin && (
+        <div className="au-modal-backdrop" onClick={() => setShowAdmin(false)}>
+          <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Admin</p>
+
+            <p className="au-modal-subtitle">Vergangene Einsätze</p>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8 }}
+              disabled={einsaetze.length === 0}
+              onClick={() => { setShowAdmin(false); setScreen("archiv"); }}
+            >
+              📁 Vergangene Einsätze ansehen & löschen {einsaetze.length > 0 ? `(${einsaetze.length})` : ""}
+            </button>
 
             <p className="au-modal-subtitle">Atemschutz-Infos</p>
             <label className="au-btn au-btn-primary au-upload-label">
@@ -1314,7 +1321,7 @@ function AtemschutzUeberwachung() {
               </div>
             )}
 
-            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
+            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowAdmin(false)}>
               Fertig
             </button>
           </div>
@@ -1329,7 +1336,9 @@ function AtemschutzUeberwachung() {
 
       /* ---- start screen (dark splash) ---- */
       .au-start-root { min-height: 100vh; background: #12151A; color: #F5F6F7; position: relative; }
-      .au-start-gear { position: absolute; top: 18px; right: 18px; background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; z-index: 5; }
+      .au-start-icons { position: absolute; top: 18px; right: 18px; z-index: 5; display: flex; gap: 8px; }
+      .au-start-gear { background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; }
+      .au-start-clock-big { font-family: 'IBM Plex Mono', 'Inter', monospace; font-size: 30px; font-weight: 600; color: #E8ECEF; margin-bottom: 18px; letter-spacing: 0.02em; }
       .au-start { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
       .au-logo-ring { width: 168px; height: 168px; border-radius: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px #2E353D, 0 20px 50px -18px rgba(0,0,0,0.8); margin-bottom: 26px; overflow: hidden; }
       .au-logo-ring img { width: 100%; height: 100%; object-fit: contain; background: #000; }
@@ -1337,7 +1346,6 @@ function AtemschutzUeberwachung() {
       .au-start-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.15; margin: 0 0 30px; max-width: 320px; }
       .au-start-btn { width: 100%; max-width: 320px; padding: 17px; border-radius: 13px; border: none; background: #F2A93B; color: #12151A; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 12px; }
       .au-start-btn-secondary { width: 100%; max-width: 320px; padding: 12px; border-radius: 11px; border: 1.5px solid #3A424B; background: transparent; color: #C7CDD3; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; }
-      .au-start-clock { margin-top: 22px; font-family: 'Inter', monospace; font-size: 13px; color: #4A535C; }
       .au-start-resume { margin-top: 14px; font-size: 12.5px; color: #F2A93B; background: none; border: none; }
 
       /* ---- dashboard (light) ---- */
@@ -1500,8 +1508,12 @@ function AtemschutzUeberwachung() {
     return (
       <div className="au-app au-start-root">
         {styleBlock}
-        <button className="au-start-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
+        <div className="au-start-icons">
+          <button className="au-start-gear" onClick={() => setShowAdmin(true)} aria-label="Admin">🛠</button>
+          <button className="au-start-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
+        </div>
         <div className="au-start">
+          <div className="au-start-clock-big">{fmtClock(new Date(now))}</div>
           <div className="au-logo-ring"><img src={LOGO_SRC} alt="Feuerwehr Zuchwil Logo" /></div>
           <p className="au-start-eyebrow">Feuerwehr Zuchwil</p>
           <h1 className="au-start-title">Atemschutz</h1>
@@ -1514,16 +1526,11 @@ function AtemschutzUeberwachung() {
               {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} bereits im Einsatz →
             </button>
           )}
-          {einsaetze.length > 0 && (
-            <button className="au-start-resume" onClick={() => setScreen("archiv")}>
-              📁 Vergangene Einsätze ({einsaetze.length})
-            </button>
-          )}
-          <div className="au-start-clock">{fmtClock(new Date(now))}</div>
         </div>
         {infoLibraryModal}
         {infoDocViewerModal}
         {settingsModal}
+        {adminModal}
       </div>
     );
   }
