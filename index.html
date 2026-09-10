@@ -402,7 +402,7 @@ function TruppReport({ tr, verbrauchFallback }) {
       </table>
       <div className="au-report-subtitle">Druckabfragen</div>
       {getAuftragSegments(tr).map((seg, i) => (
-        <div key={i} style={{ marginBottom: 10 }}>
+        <div key={i} className={i > 0 ? "au-report-segment-break" : ""} style={{ marginBottom: 10 }}>
           <div className="au-report-segment-title">
             Protokoll {getAuftragSegments(tr).length > 1 ? `${i + 1}/${getAuftragSegments(tr).length} · ` : ""}
             Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: {seg.status}
@@ -1147,7 +1147,8 @@ function AtemschutzUeberwachung() {
     const segments = getAuftragSegments(tr);
     let cursorY = doc.lastAutoTable.finalY + 8;
     segments.forEach((seg, i) => {
-      if (cursorY > 260) { doc.addPage(); cursorY = 20; }
+      // Jeder Auftrag bekommt eine eigene Seite, damit sich die Protokolle klar trennen lassen.
+      if (i > 0 || cursorY > 260) { doc.addPage(); cursorY = 20; }
       doc.setFontSize(10);
       doc.setFont(undefined, "bold");
       doc.text(
@@ -1675,6 +1676,7 @@ function AtemschutzUeberwachung() {
       .au-report-sub { font-size: 13px; color: #444; margin-bottom: 10px; }
       .au-report-subtitle { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; text-transform: uppercase; margin: 14px 0 6px; }
       .au-report-segment-title { font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; }
+      .au-report-segment-break { page-break-before: always; padding-top: 12px; }
       .au-report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 4px; }
       .au-report-table td, .au-report-table th { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
       .au-report-table td:first-child { color: #555; width: 42%; }
