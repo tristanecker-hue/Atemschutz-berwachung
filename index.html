@@ -334,11 +334,19 @@ function useBeeper() {
 }
 
 // Shared calculation logic reused by the on-screen/print report AND the PDF share export.
-// Baut die chronologische Liste der Auftrags-Protokolle: abgeschlossene Segmente (nach einem
-// Flaschenwechsel mit "Neuer Auftrag") plus das aktuell laufende Segment ganz am Ende.
+// Baut die chronologische Liste der Auftrags-Protokolle: jeder Auftrag bekommt sein eigenes,
+// vollständig erhaltenes Protokoll (keine Archivierung/Ausblendung) mit klarem Status – abgeschlossene
+// Aufträge bleiben als "abgeschlossen" sichtbar, das laufende Segment zeigt den aktuellen Trupp-Status.
 function getAuftragSegments(tr) {
   const closed = [...(tr.auftragsProtokolle || [])].reverse();
-  const current = { auftrag: tr.auftrag, einsatzort: tr.einsatzort, startTime: tr.startTime, endTime: tr.endTime, pressureLog: tr.pressureLog || [] };
+  const current = {
+    auftrag: tr.auftrag,
+    einsatzort: tr.einsatzort,
+    startTime: tr.startTime,
+    endTime: tr.endTime,
+    pressureLog: tr.pressureLog || [],
+    status: tr.status === "done" ? "abgeschlossen" : tr.status === "bereit" ? "bereit" : "aktiv",
+  };
   return [...closed, current];
 }
 
@@ -397,7 +405,7 @@ function TruppReport({ tr, verbrauchFallback }) {
         <div key={i} style={{ marginBottom: 10 }}>
           <div className="au-report-segment-title">
             Protokoll {getAuftragSegments(tr).length > 1 ? `${i + 1}/${getAuftragSegments(tr).length} · ` : ""}
-            Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""}
+            Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: {seg.status}
           </div>
           <table className="au-report-table au-report-log">
             <thead>
@@ -481,10 +489,12 @@ function AtemschutzUeberwachung() {
   const [printMode, setPrintMode] = useState(null);
   const [expandedMsgs, setExpandedMsgs] = useState({});
   const [endingId, setEndingId] = useState(null);
+  const [choosingEndActionId, setChoosingEndActionId] = useState(null);
   const [confirmingFlaschenwechselId, setConfirmingFlaschenwechselId] = useState(null);
   const [flaschenwechselNeuerAuftrag, setFlaschenwechselNeuerAuftrag] = useState(null);
   const [neuerAuftragText, setNeuerAuftragText] = useState("");
   const [neuerEinsatzortText, setNeuerEinsatzortText] = useState("");
+  const [flaschenwechselPressureInput, setFlaschenwechselPressureInput] = useState("");
   const [endPressureInput, setEndPressureInput] = useState("");
   const [editingEntry, setEditingEntry] = useState(null);
   const [entryEditText, setEntryEditText] = useState("");
@@ -767,16 +777,20 @@ function AtemschutzUeberwachung() {
 
   const confirmFlaschenwechsel = (id) => {
     const isNeuerAuftrag = flaschenwechselNeuerAuftrag === true;
+    const tiefsterDruck = Number(flaschenwechselPressureInput);
+    const now = Date.now();
     setTrupps((prev) =>
       prev.map((t) => {
         if (t.id !== id) return t;
+        const finalReading = { time: now, pressure: tiefsterDruck, message: "Flaschenwechsel" };
         if (isNeuerAuftrag) {
           const closedSegment = {
             auftrag: t.auftrag,
             einsatzort: t.einsatzort,
             startTime: t.startTime,
-            endTime: Date.now(),
-            pressureLog: t.pressureLog || [],
+            endTime: now,
+            pressureLog: [finalReading, ...(t.pressureLog || [])],
+            status: "abgeschlossen",
           };
           return {
             ...t,
@@ -794,7 +808,7 @@ function AtemschutzUeberwachung() {
           status: "bereit",
           startTime: null,
           zielErreichtTime: null,
-          pressureLog: [{ time: Date.now(), pressure: t.einstiegsdruck, message: "Flaschenwechsel" }, ...(t.pressureLog || [])],
+          pressureLog: [finalReading, ...(t.pressureLog || [])],
         };
       })
     );
@@ -802,11 +816,33 @@ function AtemschutzUeberwachung() {
     setFlaschenwechselNeuerAuftrag(null);
     setNeuerAuftragText("");
     setNeuerEinsatzortText("");
+    setFlaschenwechselPressureInput("");
   };
 
   const markZielErreicht = (id) =>
-    setTrupps((prev) => prev.map((t) => (t.id === id && !t.zielErreichtTime ? { ...t, zielErreichtTime: Date.now() } : t)));
-  const markReturning = (id) => setTrupps((prev) => prev.map((t) => (t.id === id ? { ...t, status: "returning" } : t)));
+    setTrupps((prev) =>
+      prev.map((t) =>
+        t.id === id && !t.zielErreichtTime
+          ? {
+              ...t,
+              zielErreichtTime: Date.now(),
+              pressureLog: [{ time: Date.now(), pressure: null, message: "Einsatzziel erreicht" }, ...(t.pressureLog || [])],
+            }
+          : t
+      )
+    );
+  const markReturning = (id) =>
+    setTrupps((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: "returning",
+              pressureLog: [{ time: Date.now(), pressure: null, message: "Rückzug gemeldet" }, ...(t.pressureLog || [])],
+            }
+          : t
+      )
+    );
   const confirmEnd = (id) => {
     const raw = endPressureInput;
     const val = Number(raw);
@@ -840,25 +876,41 @@ function AtemschutzUeberwachung() {
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
   const saveEdit = (id) => {
     setTrupps((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              truppfuehrer: editForm.truppfuehrer.trim(),
-              truppueberwacher: editForm.truppueberwacher.trim(),
-              adf1: editForm.adf1.trim(),
-              adf2: editForm.adf2.trim(),
-              adf3: editForm.adf3.trim(),
-              einstiegsdruck: Number(editForm.einstiegsdruck) || t.einstiegsdruck,
-              strasse: editForm.strasse.trim(),
-              ort: editForm.ort.trim(),
-              einsatzort: editForm.einsatzort.trim(),
-              auftrag: editForm.auftrag.trim(),
-              funkkanal: editForm.funkkanal.trim(),
-              seilfarbe: editForm.seilfarbe.trim(),
-            }
-          : t
-      )
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const newAuftrag = editForm.auftrag.trim();
+        const auftragChanged = newAuftrag !== (t.auftrag || "") && (t.pressureLog || []).length > 0;
+        const base = {
+          ...t,
+          truppfuehrer: editForm.truppfuehrer.trim(),
+          truppueberwacher: editForm.truppueberwacher.trim(),
+          adf1: editForm.adf1.trim(),
+          adf2: editForm.adf2.trim(),
+          adf3: editForm.adf3.trim(),
+          einstiegsdruck: Number(editForm.einstiegsdruck) || t.einstiegsdruck,
+          strasse: editForm.strasse.trim(),
+          ort: editForm.ort.trim(),
+          einsatzort: editForm.einsatzort.trim(),
+          auftrag: newAuftrag,
+          funkkanal: editForm.funkkanal.trim(),
+          seilfarbe: editForm.seilfarbe.trim(),
+        };
+        if (!auftragChanged) return base;
+        // Auftrag hat sich geändert: bisheriges Protokoll abschliessen, neues (leeres) Protokoll starten.
+        const closedSegment = {
+          auftrag: t.auftrag,
+          einsatzort: t.einsatzort,
+          startTime: t.startTime,
+          endTime: Date.now(),
+          pressureLog: t.pressureLog || [],
+          status: "abgeschlossen",
+        };
+        return {
+          ...base,
+          pressureLog: [],
+          auftragsProtokolle: [closedSegment, ...(t.auftragsProtokolle || [])],
+        };
+      })
     );
     setEditingId(null);
     setEditForm(null);
@@ -1099,7 +1151,7 @@ function AtemschutzUeberwachung() {
       doc.setFontSize(10);
       doc.setFont(undefined, "bold");
       doc.text(
-        `Protokoll${segments.length > 1 ? ` ${i + 1}/${segments.length}` : ""} – Auftrag: ${seg.auftrag || "–"}${seg.einsatzort ? ` (${seg.einsatzort})` : ""}`,
+        `Protokoll${segments.length > 1 ? ` ${i + 1}/${segments.length}` : ""} – Auftrag: ${seg.auftrag || "–"}${seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: ${seg.status}`,
         14,
         cursorY
       );
@@ -1591,6 +1643,7 @@ function AtemschutzUeberwachung() {
       .au-actions { display: flex; gap: 8px; padding: 4px 18px 16px; flex-wrap: wrap; }
       .au-chip { font-size: 12px; padding: 7px 12px; border-radius: 999px; border: 1px solid #D8DCE1; background: #fff; color: #4B5563; font-family: 'Inter', sans-serif; }
       .au-chip.done { background: #3E8E41; border-color: #3E8E41; color: #fff; font-weight: 600; }
+      .au-chip.chip-danger { background: #D9483D; border-color: #D9483D; color: #fff; font-weight: 600; }
       .au-chip.mute { color: #D9483D; border-color: #D9483D; }
 
       .au-donecard { background: #fff; border: 1px solid #E4E7EB; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #6B7280; }
@@ -2142,18 +2195,7 @@ function AtemschutzUeberwachung() {
                 {tr.status === "active" && (
                   <button className="au-chip" onClick={() => markReturning(tr.id)}>Rückzug gemeldet</button>
                 )}
-                <button className="au-chip done" onClick={() => { setEndingId(tr.id); setEndPressureInput(""); }}>Einsatz Ende</button>
-                <button
-                  className="au-chip"
-                  onClick={() => {
-                    setConfirmingFlaschenwechselId(tr.id);
-                    setFlaschenwechselNeuerAuftrag(null);
-                    setNeuerAuftragText("");
-                    setNeuerEinsatzortText("");
-                  }}
-                >
-                  🔄 Flaschenwechsel
-                </button>
+                <button className="au-chip chip-danger" onClick={() => setChoosingEndActionId(tr.id)}>Einsatz Ende</button>
                 {editingId !== tr.id && (
                   <button className="au-chip" onClick={() => startEdit(tr)}>✎ Bearbeiten</button>
                 )}
@@ -2179,7 +2221,6 @@ function AtemschutzUeberwachung() {
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button className="au-donecard-btn" onClick={() => setViewingId(tr.id)}>Ansehen</button>
                   <button className="au-donecard-btn" onClick={() => exportPdf([tr], tr.truppfuehrer || "Trupp")}>PDF</button>
-                  <button onClick={() => removeTrupp(tr.id)} style={{ background: "none", border: "none", color: "#9AA1A9" }}>✕</button>
                 </div>
               </div>
             ))}
@@ -2188,10 +2229,55 @@ function AtemschutzUeberwachung() {
         )}
       </div>
 
+      {choosingEndActionId && (
+        <div className="au-modal-backdrop" onClick={() => setChoosingEndActionId(null)}>
+          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Was trifft zu?</p>
+            <div className="au-row-sub" style={{ marginBottom: 12 }}>
+              Geht es nur um einen Flaschenwechsel (Trupp macht weiter) oder ist der Einsatz für diesen Trupp wirklich zu Ende?
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                className="au-btn au-btn-ghost"
+                onClick={() => {
+                  const id = choosingEndActionId;
+                  setChoosingEndActionId(null);
+                  setConfirmingFlaschenwechselId(id);
+                  setFlaschenwechselNeuerAuftrag(null);
+                  setNeuerAuftragText("");
+                  setNeuerEinsatzortText("");
+                  setFlaschenwechselPressureInput("");
+                }}
+              >
+                🔄 Nur Flaschenwechsel
+              </button>
+              <button
+                className="au-btn au-btn-primary"
+                onClick={() => {
+                  const id = choosingEndActionId;
+                  setChoosingEndActionId(null);
+                  setEndingId(id);
+                  setEndPressureInput("");
+                }}
+              >
+                ✅ Einsatz abschliessen für diesen Trupp
+              </button>
+              <div className="au-row-sub" style={{ marginTop: -4 }}>
+                Der Trupp ist danach endgültig abgeschlossen. Für einen erneuten Einsatz muss er komplett neu erfasst werden.
+              </div>
+              <button className="au-btn au-btn-ghost" onClick={() => setChoosingEndActionId(null)}>Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {endingId && (
         <div className="au-modal-backdrop" onClick={() => setEndingId(null)}>
           <div className="au-modal" onClick={(e) => e.stopPropagation()}>
             <p className="au-modal-title">Einsatz beenden</p>
+            <div className="au-row-sub" style={{ marginBottom: 10 }}>
+              Der Trupp ist danach endgültig abgeschlossen. Für einen erneuten Einsatz muss er komplett neu erfasst werden.
+            </div>
             <div className="au-field">
               <label>Druck bei Einsatzende (bar)</label>
               <input
@@ -2217,8 +2303,20 @@ function AtemschutzUeberwachung() {
           <div className="au-modal" onClick={(e) => e.stopPropagation()}>
             <p className="au-modal-title">Flaschenwechsel bestätigen</p>
             <div className="au-row-sub" style={{ marginBottom: 12 }}>
-              Der Druck wird auf den Einstiegsdruck zurückgesetzt, der Trupp geht zurück in Bereitschaft.
+              Nach der Erfassung des tiefsten Drucks wird auf den Einstiegsdruck zurückgesetzt, der Trupp geht zurück in Bereitschaft.
               Ihr müsst danach erneut auf „▶ Einsatz" tippen, um weiterzumachen.
+            </div>
+
+            <div className="au-field">
+              <label>Tiefster Druck vor dem Wechsel (bar)</label>
+              <input
+                type="number"
+                autoFocus
+                inputMode="numeric"
+                placeholder="z. B. 55"
+                value={flaschenwechselPressureInput}
+                onChange={(e) => setFlaschenwechselPressureInput(e.target.value)}
+              />
             </div>
 
             <p className="au-modal-subtitle">Nach dem Flaschenwechsel</p>
@@ -2250,7 +2348,6 @@ function AtemschutzUeberwachung() {
                 <div className="au-field">
                   <label>Neuer Auftrag</label>
                   <input
-                    autoFocus
                     value={neuerAuftragText}
                     onChange={(e) => setNeuerAuftragText(e.target.value)}
                     placeholder="z. B. Brandbekämpfung"
@@ -2264,6 +2361,8 @@ function AtemschutzUeberwachung() {
               <button
                 className="au-btn au-btn-primary"
                 disabled={
+                  !flaschenwechselPressureInput.trim() ||
+                  Number.isNaN(Number(flaschenwechselPressureInput)) ||
                   flaschenwechselNeuerAuftrag === null ||
                   (flaschenwechselNeuerAuftrag === true && (!neuerAuftragText.trim() || !neuerEinsatzortText.trim()))
                 }
