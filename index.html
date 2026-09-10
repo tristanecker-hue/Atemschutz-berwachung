@@ -9,16 +9,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>html,body{margin:0;padding:0;background:#12151A;}</style>
 
-<!-- React + Babel (kein Build-Schritt nötig) -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 
-<!-- PDF-Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
-<!-- Firebase Firestore (Echtzeit-Synchronisierung zwischen mehreren Geräten, komplett im Gratis-Plan) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
@@ -26,9 +23,6 @@
 <div id="root"></div>
 
 <script>
-// ============================================================
-// Firebase-Konfiguration (Projekt: atemschutz-zuchwil)
-// ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyBh9I_HgsJ-Ck5l8O77qu2BFTkAkJT_iMo",
   authDomain: "atemschutz-zuchwil.firebaseapp.com",
@@ -167,6 +161,40 @@ function arcPath(cx, cy, r, a0, a1) {
 // Meldungen ohne Druckangabe werden dabei ignoriert.
 // Verkleinert/komprimiert ein Bild im Browser (Canvas), bevor es gespeichert wird – hält Fotos
 // deutlich unter dem 1-MB-Limit pro Firestore-Dokument, ganz ohne Firebase Storage/Rechnungskonto.
+// Ermittelt den Standort per GPS und übersetzt ihn via Nominatim (OpenStreetMap, kostenlos,
+// kein API-Key) in Strasse (mit Nr.) und Ort. Das Ergebnis füllt die Felder nur vor – die
+// manuelle Eingabe/Korrektur bleibt jederzeit möglich.
+function fetchAddressFromGps() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error("GPS auf diesem Gerät nicht verfügbar")); return; }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+            { headers: { "Accept-Language": "de" } }
+          );
+          const data = await res.json();
+          const a = data.address || {};
+          const road = a.road || a.pedestrian || a.footway || a.residential || "";
+          const houseNumber = a.house_number || "";
+          const city = a.city || a.town || a.village || a.municipality || "";
+          const postcode = a.postcode || "";
+          const strasse = [road, houseNumber].filter(Boolean).join(" ");
+          const ort = [postcode, city].filter(Boolean).join(" ");
+          if (strasse || ort) resolve({ strasse, ort });
+          else reject(new Error("Adresse nicht gefunden"));
+        } catch (e) {
+          reject(new Error("Fehler beim Ermitteln der Adresse"));
+        }
+      },
+      () => reject(new Error("Standortzugriff verweigert")),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
 function compressImageToDataUrl(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -306,6 +334,14 @@ function useBeeper() {
 }
 
 // Shared calculation logic reused by the on-screen/print report AND the PDF share export.
+// Baut die chronologische Liste der Auftrags-Protokolle: abgeschlossene Segmente (nach einem
+// Flaschenwechsel mit "Neuer Auftrag") plus das aktuell laufende Segment ganz am Ende.
+function getAuftragSegments(tr) {
+  const closed = [...(tr.auftragsProtokolle || [])].reverse();
+  const current = { auftrag: tr.auftrag, einsatzort: tr.einsatzort, startTime: tr.startTime, endTime: tr.endTime, pressureLog: tr.pressureLog || [] };
+  return [...closed, current];
+}
+
 function getTruppReportData(tr, verbrauchFallback) {
   const log = tr.pressureLog || [];
   const chronological = [...log].reverse();
@@ -330,6 +366,7 @@ function TruppReport({ tr, verbrauchFallback }) {
         <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
         <div style={{ flex: 1 }}>
           <div className="au-report-title">{tr.truppfuehrer || "Trupp"}</div>
+          {(tr.strasse || tr.ort) && <div className="au-report-einsatzort">{[tr.strasse, tr.ort].filter(Boolean).join(", ")}</div>}
           {tr.einsatzort && <div className="au-report-einsatzort">{tr.einsatzort}</div>}
         </div>
         <div className="au-report-status">{statusLabel}</div>
@@ -338,7 +375,8 @@ function TruppReport({ tr, verbrauchFallback }) {
       {tr.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {tr.truppueberwacher}</div>}
       <table className="au-report-table">
         <tbody>
-          <tr><td>Adresse</td><td>{tr.adresse || "–"}</td></tr>
+          <tr><td>Strasse</td><td>{tr.strasse || "–"}</td></tr>
+          <tr><td>Ort</td><td>{tr.ort || "–"}</td></tr>
           <tr><td>Einsatzort</td><td>{tr.einsatzort || "–"}</td></tr>
           <tr><td>Auftrag</td><td>{tr.auftrag || "–"}</td></tr>
           <tr><td>Funkkanal</td><td>{tr.funkkanal || "–"}</td></tr>
@@ -355,20 +393,28 @@ function TruppReport({ tr, verbrauchFallback }) {
         </tbody>
       </table>
       <div className="au-report-subtitle">Druckabfragen</div>
-      <table className="au-report-table au-report-log">
-        <thead>
-          <tr><th>Zeit</th><th>Druck</th><th>Meldung</th></tr>
-        </thead>
-        <tbody>
-          {chronological.map((e, i) => (
-            <tr key={i}>
-              <td>{new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</td>
-              <td>{e.pressure != null ? `${e.pressure} bar` : "–"}</td>
-              <td>{e.message || "–"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {getAuftragSegments(tr).map((seg, i) => (
+        <div key={i} style={{ marginBottom: 10 }}>
+          <div className="au-report-segment-title">
+            Protokoll {getAuftragSegments(tr).length > 1 ? `${i + 1}/${getAuftragSegments(tr).length} · ` : ""}
+            Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""}
+          </div>
+          <table className="au-report-table au-report-log">
+            <thead>
+              <tr><th>Zeit</th><th>Druck</th><th>Meldung</th></tr>
+            </thead>
+            <tbody>
+              {[...(seg.pressureLog || [])].reverse().map((e, j) => (
+                <tr key={j}>
+                  <td>{new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</td>
+                  <td>{e.pressure != null ? `${e.pressure} bar` : "–"}</td>
+                  <td>{e.message || "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
@@ -435,6 +481,10 @@ function AtemschutzUeberwachung() {
   const [printMode, setPrintMode] = useState(null);
   const [expandedMsgs, setExpandedMsgs] = useState({});
   const [endingId, setEndingId] = useState(null);
+  const [confirmingFlaschenwechselId, setConfirmingFlaschenwechselId] = useState(null);
+  const [flaschenwechselNeuerAuftrag, setFlaschenwechselNeuerAuftrag] = useState(null);
+  const [neuerAuftragText, setNeuerAuftragText] = useState("");
+  const [neuerEinsatzortText, setNeuerEinsatzortText] = useState("");
   const [endPressureInput, setEndPressureInput] = useState("");
   const [editingEntry, setEditingEntry] = useState(null);
   const [entryEditText, setEntryEditText] = useState("");
@@ -449,6 +499,7 @@ function AtemschutzUeberwachung() {
   const [editingDocNameId, setEditingDocNameId] = useState(null);
   const [docNameEditText, setDocNameEditText] = useState("");
   const [uploadWarning, setUploadWarning] = useState("");
+  const [gpsStatus, setGpsStatus] = useState("");
   const beep = useBeeper();
   const lastAlarmBeep = useRef({});
   const lastWarnBeep = useRef({});
@@ -461,7 +512,8 @@ function AtemschutzUeberwachung() {
     adf2: "",
     adf3: "",
     einstiegsdruck: 300,
-    adresse: "",
+    strasse: "",
+    ort: "",
     einsatzort: "",
     auftrag: "",
     funkkanal: "3",
@@ -681,7 +733,8 @@ function AtemschutzUeberwachung() {
       adf2: form.adf2.trim(),
       adf3: form.adf3.trim(),
       einstiegsdruck: Number(form.einstiegsdruck) || 0,
-      adresse: form.adresse.trim(),
+      strasse: form.strasse.trim(),
+      ort: form.ort.trim(),
       einsatzort: form.einsatzort.trim(),
       auftrag: form.auftrag.trim(),
       funkkanal: form.funkkanal.trim(),
@@ -691,11 +744,12 @@ function AtemschutzUeberwachung() {
       endTime: null,
       zielErreichtTime: null,
       pressureLog: [],
+      auftragsProtokolle: [],
     };
     setTrupps((prev) => [t, ...prev]);
     setForm({
       truppfuehrer: "", truppueberwacher: "", adf1: "", adf2: "", adf3: "",
-      einstiegsdruck: 300, adresse: "", einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "",
+      einstiegsdruck: 300, strasse: "", ort: "", einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "",
     });
     setShowForm(false);
   };
@@ -705,10 +759,49 @@ function AtemschutzUeberwachung() {
     setTrupps((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, status: "active", startTime, pressureLog: [{ time: startTime, pressure: t.einstiegsdruck, message: "" }] }
+          ? { ...t, status: "active", startTime, pressureLog: [{ time: startTime, pressure: t.einstiegsdruck, message: "" }, ...(t.pressureLog || [])] }
           : t
       )
     );
+  };
+
+  const confirmFlaschenwechsel = (id) => {
+    const isNeuerAuftrag = flaschenwechselNeuerAuftrag === true;
+    setTrupps((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        if (isNeuerAuftrag) {
+          const closedSegment = {
+            auftrag: t.auftrag,
+            einsatzort: t.einsatzort,
+            startTime: t.startTime,
+            endTime: Date.now(),
+            pressureLog: t.pressureLog || [],
+          };
+          return {
+            ...t,
+            status: "bereit",
+            startTime: null,
+            zielErreichtTime: null,
+            auftrag: neuerAuftragText.trim(),
+            einsatzort: neuerEinsatzortText.trim(),
+            pressureLog: [],
+            auftragsProtokolle: [closedSegment, ...(t.auftragsProtokolle || [])],
+          };
+        }
+        return {
+          ...t,
+          status: "bereit",
+          startTime: null,
+          zielErreichtTime: null,
+          pressureLog: [{ time: Date.now(), pressure: t.einstiegsdruck, message: "Flaschenwechsel" }, ...(t.pressureLog || [])],
+        };
+      })
+    );
+    setConfirmingFlaschenwechselId(null);
+    setFlaschenwechselNeuerAuftrag(null);
+    setNeuerAuftragText("");
+    setNeuerEinsatzortText("");
   };
 
   const markZielErreicht = (id) =>
@@ -741,7 +834,7 @@ function AtemschutzUeberwachung() {
     setEditForm({
       truppfuehrer: tr.truppfuehrer, truppueberwacher: tr.truppueberwacher, adf1: tr.adf1, adf2: tr.adf2, adf3: tr.adf3,
       einstiegsdruck: tr.einstiegsdruck,
-      adresse: tr.adresse, einsatzort: tr.einsatzort, auftrag: tr.auftrag, funkkanal: tr.funkkanal, seilfarbe: tr.seilfarbe,
+      strasse: tr.strasse, ort: tr.ort, einsatzort: tr.einsatzort, auftrag: tr.auftrag, funkkanal: tr.funkkanal, seilfarbe: tr.seilfarbe,
     });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
@@ -757,7 +850,8 @@ function AtemschutzUeberwachung() {
               adf2: editForm.adf2.trim(),
               adf3: editForm.adf3.trim(),
               einstiegsdruck: Number(editForm.einstiegsdruck) || t.einstiegsdruck,
-              adresse: editForm.adresse.trim(),
+              strasse: editForm.strasse.trim(),
+              ort: editForm.ort.trim(),
               einsatzort: editForm.einsatzort.trim(),
               auftrag: editForm.auftrag.trim(),
               funkkanal: editForm.funkkanal.trim(),
@@ -914,6 +1008,17 @@ function AtemschutzUeberwachung() {
     setDocNameEditText("");
   };
 
+  const locateAddress = async (applyAddress) => {
+    setGpsStatus("Suche Standort…");
+    try {
+      const addr = await fetchAddressFromGps();
+      applyAddress(addr);
+      setGpsStatus("");
+    } catch (err) {
+      setGpsStatus(err.message || "Fehler beim Ermitteln des Standorts");
+    }
+  };
+
   const handleMannschaftUpload = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -969,7 +1074,8 @@ function AtemschutzUeberwachung() {
     doc.line(14, 30, 196, 30);
 
     const infoRows = [
-      ["Adresse", tr.adresse || "–"],
+      ["Strasse", tr.strasse || "–"],
+      ["Ort", tr.ort || "–"],
       ["Einsatzort", tr.einsatzort || "–"],
       ["Mitglieder", members.join(", ") || "–"],
       ["Truppüberwacher", tr.truppueberwacher || "–"],
@@ -986,18 +1092,32 @@ function AtemschutzUeberwachung() {
     ];
     doc.autoTable({ startY: 35, body: infoRows, theme: "grid", styles: { fontSize: 9 } });
 
-    const logRows = chronological.map((e) => [
-      new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-      e.pressure != null ? `${e.pressure} bar` : "–",
-      e.message || "–",
-    ]);
-    doc.autoTable({
-      startY: doc.lastAutoTable.finalY + 8,
-      head: [["Zeit", "Druck", "Meldung"]],
-      body: logRows,
-      theme: "grid",
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [30, 33, 39] },
+    const segments = getAuftragSegments(tr);
+    let cursorY = doc.lastAutoTable.finalY + 8;
+    segments.forEach((seg, i) => {
+      if (cursorY > 260) { doc.addPage(); cursorY = 20; }
+      doc.setFontSize(10);
+      doc.setFont(undefined, "bold");
+      doc.text(
+        `Protokoll${segments.length > 1 ? ` ${i + 1}/${segments.length}` : ""} – Auftrag: ${seg.auftrag || "–"}${seg.einsatzort ? ` (${seg.einsatzort})` : ""}`,
+        14,
+        cursorY
+      );
+      doc.setFont(undefined, "normal");
+      const logRows = [...(seg.pressureLog || [])].reverse().map((e) => [
+        new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+        e.pressure != null ? `${e.pressure} bar` : "–",
+        e.message || "–",
+      ]);
+      doc.autoTable({
+        startY: cursorY + 3,
+        head: [["Zeit", "Druck", "Meldung"]],
+        body: logRows,
+        theme: "grid",
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [30, 33, 39] },
+      });
+      cursorY = doc.lastAutoTable.finalY + 10;
     });
   };
 
@@ -1380,6 +1500,10 @@ function AtemschutzUeberwachung() {
       .au-field select { background: #F9FAFB; border: 1px solid #E4E7EB; border-radius: 8px; padding: 10px 12px; color: #1A1D21; font-family: 'Inter', sans-serif; font-size: 14px; width: 100%; }
       .au-field input:focus { outline: 2px solid #3E8E41; outline-offset: 1px; }
       .au-row2 { display: flex; gap: 10px; }
+      .au-address-row { display: flex; gap: 8px; align-items: flex-start; }
+      .au-address-row .au-field { flex: 1; }
+      .au-gps-btn { flex-shrink: 0; margin-top: 20px; width: 42px; height: 42px; border-radius: 8px; border: 1px solid #E4E7EB; background: #F9FAFB; font-size: 16px; }
+      .au-gps-status { font-size: 11.5px; color: #6B7280; margin-top: 4px; }
       .au-row2 .au-field { flex: 1; }
       .au-row3 { display: flex; gap: 10px; }
       .au-row3 .au-field { flex: 1; }
@@ -1497,6 +1621,7 @@ function AtemschutzUeberwachung() {
       .au-report-status { font-size: 13px; color: #444; flex-shrink: 0; }
       .au-report-sub { font-size: 13px; color: #444; margin-bottom: 10px; }
       .au-report-subtitle { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; text-transform: uppercase; margin: 14px 0 6px; }
+      .au-report-segment-title { font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; }
       .au-report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 4px; }
       .au-report-table td, .au-report-table th { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
       .au-report-table td:first-child { color: #555; width: 42%; }
@@ -1556,16 +1681,21 @@ function AtemschutzUeberwachung() {
 
           {!viewingEinsatz &&
             einsaetze.map((ein) => {
-              const orte = Array.from(new Set((ein.trupps || []).map((t) => t.einsatzort).filter(Boolean)));
+              const adressen = Array.from(
+                new Set((ein.trupps || []).map((t) => [t.strasse, t.ort].filter(Boolean).join(", ")).filter(Boolean))
+              );
               return (
                 <div key={ein.id} className="au-donecard" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <div>
+                      <div style={{ fontSize: 12, color: "#9AA1A9" }}>
+                        {new Date(ein.startedAt).toLocaleDateString("de-DE")}
+                      </div>
                       <div style={{ fontWeight: 600, color: "#1A1D21" }}>
-                        {orte.length > 0 ? orte.join(", ") : `Einsatz vom ${new Date(ein.startedAt).toLocaleDateString("de-DE")}`}
+                        {adressen.length > 0 ? adressen.join(" · ") : "Ohne Adresse"}
                       </div>
                       <div style={{ fontSize: 12, color: "#9AA1A9", marginTop: 2 }}>
-                        {new Date(ein.startedAt).toLocaleString("de-DE")} · {(ein.trupps || []).length} Trupp{(ein.trupps || []).length === 1 ? "" : "s"}
+                        {new Date(ein.startedAt).toLocaleTimeString("de-DE")} · {(ein.trupps || []).length} Trupp{(ein.trupps || []).length === 1 ? "" : "s"}
                       </div>
                     </div>
                   </div>
@@ -1671,15 +1801,33 @@ function AtemschutzUeberwachung() {
               <label>Einstiegsdruck (kleinster Druck im Trupp)</label>
               <input type="number" value={form.einstiegsdruck} onChange={(e) => setForm({ ...form, einstiegsdruck: e.target.value })} />
             </div>
-            <div className="au-field">
-              <label>Adresse</label>
-              <input
-                placeholder="Strasse, Nr., Ort"
-                value={form.adresse}
-                onChange={(e) => setForm({ ...form, adresse: e.target.value })}
-                list="au-strassen-list"
-              />
+            <div className="au-address-row">
+              <div className="au-field">
+                <label>Strasse, Nr.</label>
+                <input
+                  placeholder="z. B. Hauptstrasse 12"
+                  value={form.strasse}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setForm((f) => ({ ...f, strasse: val, ort: !f.ort && ZUCHWIL_STRASSEN.includes(val) ? "4528 Zuchwil" : f.ort }));
+                  }}
+                  list="au-strassen-list"
+                />
+              </div>
+              <div className="au-field" style={{ maxWidth: 140 }}>
+                <label>Ort</label>
+                <input placeholder="4528 Zuchwil" value={form.ort} onChange={(e) => setForm({ ...form, ort: e.target.value })} />
+              </div>
+              <button
+                type="button"
+                className="au-gps-btn"
+                onClick={() => locateAddress((res) => setForm((f) => ({ ...f, strasse: res.strasse || f.strasse, ort: res.ort || f.ort })))}
+                aria-label="Standort per GPS übernehmen"
+              >
+                📍
+              </button>
             </div>
+            {gpsStatus && <div className="au-gps-status" style={{ marginTop: -6, marginBottom: 8 }}>{gpsStatus}</div>}
             <div className="au-field">
               <label>Einsatzort</label>
               <input placeholder="z. B. 1. Stock" value={form.einsatzort} onChange={(e) => setForm({ ...form, einsatzort: e.target.value })} />
@@ -1721,7 +1869,7 @@ function AtemschutzUeberwachung() {
                   {members.length > 0 && <div className="au-row-sub">{members.join(", ")}</div>}
                   {tr.truppueberwacher && <div className="au-row-sub">Überwacher: {tr.truppueberwacher}</div>}
                   {(tr.einsatzort || tr.auftrag) && (
-                    <div className="au-row-sub" style={{ marginTop: 4 }}>{[tr.adresse, tr.einsatzort, tr.auftrag].filter(Boolean).join(" · ")}</div>
+                    <div className="au-row-sub" style={{ marginTop: 4 }}>{[[tr.strasse, tr.ort].filter(Boolean).join(", "), tr.einsatzort, tr.auftrag].filter(Boolean).join(" · ")}</div>
                   )}
                   <div className="au-row-sub">Einstiegsdruck {tr.einstiegsdruck} bar{tr.funkkanal ? ` · Kanal ${tr.funkkanal}` : ""}{tr.seilfarbe ? ` · Seil ${tr.seilfarbe}` : ""}</div>
                 </div>
@@ -1747,10 +1895,32 @@ function AtemschutzUeberwachung() {
                       <label>Einstiegsdruck</label>
                       <input type="number" value={editForm.einstiegsdruck} onChange={(e) => setEditForm({ ...editForm, einstiegsdruck: e.target.value })} />
                     </div>
-                    <div className="au-field">
-                      <label>Adresse</label>
-                      <input value={editForm.adresse} onChange={(e) => setEditForm({ ...editForm, adresse: e.target.value })} list="au-strassen-list" />
+                    <div className="au-address-row">
+                      <div className="au-field">
+                        <label>Strasse, Nr.</label>
+                        <input
+                          value={editForm.strasse}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditForm((f) => ({ ...f, strasse: val, ort: !f.ort && ZUCHWIL_STRASSEN.includes(val) ? "4528 Zuchwil" : f.ort }));
+                          }}
+                          list="au-strassen-list"
+                        />
+                      </div>
+                      <div className="au-field" style={{ maxWidth: 140 }}>
+                        <label>Ort</label>
+                        <input value={editForm.ort} onChange={(e) => setEditForm({ ...editForm, ort: e.target.value })} />
+                      </div>
+                      <button
+                        type="button"
+                        className="au-gps-btn"
+                        onClick={() => locateAddress((res) => setEditForm((f) => ({ ...f, strasse: res.strasse || f.strasse, ort: res.ort || f.ort })))}
+                        aria-label="Standort per GPS übernehmen"
+                      >
+                        📍
+                      </button>
                     </div>
+                    {gpsStatus && <div className="au-gps-status" style={{ marginBottom: 8 }}>{gpsStatus}</div>}
                     <div className="au-field">
                       <label>Einsatzort</label>
                       <input value={editForm.einsatzort} onChange={(e) => setEditForm({ ...editForm, einsatzort: e.target.value })} />
@@ -1883,10 +2053,32 @@ function AtemschutzUeberwachung() {
                     <label>Einstiegsdruck</label>
                     <input type="number" value={editForm.einstiegsdruck} onChange={(e) => setEditForm({ ...editForm, einstiegsdruck: e.target.value })} />
                   </div>
-                  <div className="au-field">
-                    <label>Adresse</label>
-                    <input value={editForm.adresse} onChange={(e) => setEditForm({ ...editForm, adresse: e.target.value })} list="au-strassen-list" />
+                  <div className="au-address-row">
+                    <div className="au-field">
+                      <label>Strasse, Nr.</label>
+                      <input
+                        value={editForm.strasse}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditForm((f) => ({ ...f, strasse: val, ort: !f.ort && ZUCHWIL_STRASSEN.includes(val) ? "4528 Zuchwil" : f.ort }));
+                        }}
+                        list="au-strassen-list"
+                      />
+                    </div>
+                    <div className="au-field" style={{ maxWidth: 140 }}>
+                      <label>Ort</label>
+                      <input value={editForm.ort} onChange={(e) => setEditForm({ ...editForm, ort: e.target.value })} />
+                    </div>
+                    <button
+                      type="button"
+                      className="au-gps-btn"
+                      onClick={() => locateAddress((res) => setEditForm((f) => ({ ...f, strasse: res.strasse || f.strasse, ort: res.ort || f.ort })))}
+                      aria-label="Standort per GPS übernehmen"
+                    >
+                      📍
+                    </button>
                   </div>
+                  {gpsStatus && <div className="au-gps-status" style={{ marginBottom: 8 }}>{gpsStatus}</div>}
                   <div className="au-field">
                     <label>Einsatzort</label>
                     <input value={editForm.einsatzort} onChange={(e) => setEditForm({ ...editForm, einsatzort: e.target.value })} />
@@ -1921,12 +2113,12 @@ function AtemschutzUeberwachung() {
                     <div className="au-row-sub">Einsatzzeit{tr.status === "returning" ? " · Rückweg" : ""}</div>
                   </div>
                 </div>
-                {(tr.adresse || tr.einsatzort) && (
+                {(tr.strasse || tr.ort || tr.einsatzort) && (
                   <div className="au-row">
                     <div className="au-row-icon"><IconPin /></div>
                     <div>
-                      <div className="au-row-main">{tr.adresse || tr.einsatzort}</div>
-                      {tr.adresse && tr.einsatzort && <div className="au-row-sub">{tr.einsatzort}</div>}
+                      <div className="au-row-main">{[tr.strasse, tr.ort].filter(Boolean).join(", ") || tr.einsatzort}</div>
+                      {(tr.strasse || tr.ort) && tr.einsatzort && <div className="au-row-sub">{tr.einsatzort}</div>}
                       {tr.auftrag && <div className="au-row-sub">{tr.auftrag}</div>}
                     </div>
                   </div>
@@ -1951,6 +2143,17 @@ function AtemschutzUeberwachung() {
                   <button className="au-chip" onClick={() => markReturning(tr.id)}>Rückzug gemeldet</button>
                 )}
                 <button className="au-chip done" onClick={() => { setEndingId(tr.id); setEndPressureInput(""); }}>Einsatz Ende</button>
+                <button
+                  className="au-chip"
+                  onClick={() => {
+                    setConfirmingFlaschenwechselId(tr.id);
+                    setFlaschenwechselNeuerAuftrag(null);
+                    setNeuerAuftragText("");
+                    setNeuerEinsatzortText("");
+                  }}
+                >
+                  🔄 Flaschenwechsel
+                </button>
                 {editingId !== tr.id && (
                   <button className="au-chip" onClick={() => startEdit(tr)}>✎ Bearbeiten</button>
                 )}
@@ -2004,6 +2207,70 @@ function AtemschutzUeberwachung() {
             <div className="au-formbtns">
               <button className="au-btn au-btn-ghost" onClick={() => setEndingId(null)}>Abbrechen</button>
               <button className="au-btn au-btn-primary" onClick={() => confirmEnd(endingId)}>Einsatz beenden</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmingFlaschenwechselId && (
+        <div className="au-modal-backdrop" onClick={() => setConfirmingFlaschenwechselId(null)}>
+          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Flaschenwechsel bestätigen</p>
+            <div className="au-row-sub" style={{ marginBottom: 12 }}>
+              Der Druck wird auf den Einstiegsdruck zurückgesetzt, der Trupp geht zurück in Bereitschaft.
+              Ihr müsst danach erneut auf „▶ Einsatz" tippen, um weiterzumachen.
+            </div>
+
+            <p className="au-modal-subtitle">Nach dem Flaschenwechsel</p>
+            <div className="au-formbtns" style={{ marginBottom: 12 }}>
+              <button
+                className={`au-btn ${flaschenwechselNeuerAuftrag === false ? "au-btn-primary" : "au-btn-ghost"}`}
+                onClick={() => setFlaschenwechselNeuerAuftrag(false)}
+              >
+                Gleicher Auftrag
+              </button>
+              <button
+                className={`au-btn ${flaschenwechselNeuerAuftrag === true ? "au-btn-primary" : "au-btn-ghost"}`}
+                onClick={() => setFlaschenwechselNeuerAuftrag(true)}
+              >
+                Neuer Auftrag
+              </button>
+            </div>
+
+            {flaschenwechselNeuerAuftrag === true && (
+              <>
+                <div className="au-field">
+                  <label>Neuer Einsatzort</label>
+                  <input
+                    value={neuerEinsatzortText}
+                    onChange={(e) => setNeuerEinsatzortText(e.target.value)}
+                    placeholder="z. B. 2. Stock"
+                  />
+                </div>
+                <div className="au-field">
+                  <label>Neuer Auftrag</label>
+                  <input
+                    autoFocus
+                    value={neuerAuftragText}
+                    onChange={(e) => setNeuerAuftragText(e.target.value)}
+                    placeholder="z. B. Brandbekämpfung"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="au-formbtns">
+              <button className="au-btn au-btn-ghost" onClick={() => setConfirmingFlaschenwechselId(null)}>Abbrechen</button>
+              <button
+                className="au-btn au-btn-primary"
+                disabled={
+                  flaschenwechselNeuerAuftrag === null ||
+                  (flaschenwechselNeuerAuftrag === true && (!neuerAuftragText.trim() || !neuerEinsatzortText.trim()))
+                }
+                onClick={() => confirmFlaschenwechsel(confirmingFlaschenwechselId)}
+              >
+                Ja, Flaschenwechsel
+              </button>
             </div>
           </div>
         </div>
