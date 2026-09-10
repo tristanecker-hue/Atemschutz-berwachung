@@ -8,42 +8,135 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>html,body{margin:0;padding:0;background:#12151A;}</style>
+
+<!-- React + Babel (kein Build-Schritt nötig) -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+<!-- PDF-Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<!-- Firebase Firestore (Echtzeit-Synchronisierung zwischen mehreren Geräten, komplett im Gratis-Plan) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="root"></div>
 
 <script>
-// ---- persistente Speicherung via localStorage (ersetzt window.storage aus der Claude-Umgebung) ----
+// ============================================================
+// Firebase-Konfiguration (Projekt: atemschutz-zuchwil)
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBh9I_HgsJ-Ck5l8O77qu2BFTkAkJT_iMo",
+  authDomain: "atemschutz-zuchwil.firebaseapp.com",
+  projectId: "atemschutz-zuchwil",
+  storageBucket: "atemschutz-zuchwil.firebasestorage.app",
+  messagingSenderId: "786967409105",
+  appId: "1:786967409105:web:6c859e2f7635f3c1e470f0"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const COLLECTION = "atemschutz";
+
+// ------------------------------------------------------------
+// window.storage: dieselbe Grund-Schnittstelle wie in der Claude-Vorschau
+// (get/set/delete/list), zusätzlich:
+//   - subscribeOnce(key, onUpdate): liefert den aktuellen Wert sofort UND ruft
+//     onUpdate bei jeder externen Änderung erneut auf (Echtzeit-Sync).
+//   - addDocument/deleteDocument/updateDocument/subscribeCollection: für die
+//     Atemschutz-Infos (Fotos/PDFs) – jede Datei ist ein eigenes Firestore-
+//     Dokument (max. 1 MB), statt alle zusammen in einem einzigen Datensatz.
+//     Dadurch reicht der kostenlose Firestore-Plan aus, ganz ohne Firebase
+//     Storage bzw. Rechnungskonto (Blaze). Fotos werden vor dem Speichern im
+//     Browser verkleinert/komprimiert (siehe compressImageToDataUrl im Code).
+// Ein einfacher "letzter geschriebener Wert"-Abgleich verhindert, dass die
+// eigene Schreibung als externe Änderung zurück-getriggert wird.
+// ------------------------------------------------------------
 window.storage = {
-  get: async function(key) {
+  _lastWritten: {},
+
+  get: async function (key) {
     try {
-      var v = localStorage.getItem(key);
-      return v !== null ? { key: key, value: v, shared: false } : null;
+      const snap = await db.collection(COLLECTION).doc(key).get();
+      if (!snap.exists) return null;
+      const value = snap.data().value;
+      return value != null ? { key: key, value: value, shared: true } : null;
     } catch (e) { return null; }
   },
-  set: async function(key, value) {
+
+  set: async function (key, value) {
     try {
-      localStorage.setItem(key, value);
-      return { key: key, value: value, shared: false };
+      window.storage._lastWritten[key] = value;
+      await db.collection(COLLECTION).doc(key).set({ value: value, updatedAt: Date.now() });
+      return { key: key, value: value, shared: true };
     } catch (e) { return null; }
   },
-  delete: async function(key) {
+
+  delete: async function (key) {
     try {
-      localStorage.removeItem(key);
-      return { key: key, deleted: true, shared: false };
+      await db.collection(COLLECTION).doc(key).delete();
+      return { key: key, deleted: true, shared: true };
     } catch (e) { return null; }
   },
-  list: async function(prefix) {
+
+  list: async function (prefix) {
     try {
-      var keys = Object.keys(localStorage).filter(function(k) { return !prefix || k.indexOf(prefix) === 0; });
+      const snap = await db.collection(COLLECTION).get();
+      const keys = [];
+      snap.forEach((d) => { if (!prefix || d.id.indexOf(prefix) === 0) keys.push(d.id); });
       return { keys: keys };
     } catch (e) { return { keys: [] }; }
-  }
+  },
+
+  // Liefert den aktuellen Wert sofort (Promise löst nach erster Antwort auf) und
+  // ruft danach onUpdate(value) bei jeder Änderung erneut auf. Gibt eine
+  // Unsubscribe-Funktion zurück (via Promise-Resolve).
+  subscribeOnce: function (key, onUpdate) {
+    return new Promise((resolve) => {
+      let first = true;
+      const unsub = db.collection(COLLECTION).doc(key).onSnapshot(
+        (snap) => {
+          const value = snap.exists ? snap.data().value : null;
+          if (value != null && value !== window.storage._lastWritten[key]) {
+            window.storage._lastWritten[key] = value;
+            onUpdate(value);
+          }
+          if (first) { first = false; resolve(unsub); }
+        },
+        () => { if (first) { first = false; resolve(unsub); } }
+      );
+    });
+  },
+
+  // --- Ein-Dokument-pro-Datei-Speicherung für die Atemschutz-Infos ---
+  addDocument: async function (name, data) {
+    const ref = await db.collection(COLLECTION + "_" + name + "_items").add(data);
+    return ref.id;
+  },
+  deleteDocument: async function (name, id) {
+    await db.collection(COLLECTION + "_" + name + "_items").doc(id).delete();
+  },
+  updateDocument: async function (name, id, data) {
+    await db.collection(COLLECTION + "_" + name + "_items").doc(id).update(data);
+  },
+  subscribeCollection: function (name, onUpdate) {
+    return new Promise((resolve) => {
+      let first = true;
+      const unsub = db.collection(COLLECTION + "_" + name + "_items").orderBy("addedAt", "desc").onSnapshot(
+        (snap) => {
+          const arr = [];
+          snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+          onUpdate(arr);
+          if (first) { first = false; resolve(unsub); }
+        },
+        () => { if (first) { first = false; resolve(unsub); } }
+      );
+    });
+  },
 };
 </script>
 
@@ -90,6 +183,31 @@ function arcPath(cx, cy, r, a0, a1) {
 // Luftverbrauch je Trupp: aus den geloggten Abfragen berechnet (Druckabfall / Zeit),
 // fällt auf den Standardwert aus den Optionen zurück, solange zu wenig Messpunkte vorliegen.
 // Meldungen ohne Druckangabe werden dabei ignoriert.
+// Verkleinert/komprimiert ein Bild im Browser (Canvas), bevor es gespeichert wird – hält Fotos
+// deutlich unter dem 1-MB-Limit pro Firestore-Dokument, ganz ohne Firebase Storage/Rechnungskonto.
+function compressImageToDataUrl(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function pressureEntries(tr) {
   return (tr.pressureLog || []).filter((e) => e.pressure !== null && e.pressure !== undefined);
 }
@@ -238,6 +356,7 @@ function TruppReport({ tr, verbrauchFallback }) {
       {tr.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {tr.truppueberwacher}</div>}
       <table className="au-report-table">
         <tbody>
+          <tr><td>Adresse</td><td>{tr.adresse || "–"}</td></tr>
           <tr><td>Einsatzort</td><td>{tr.einsatzort || "–"}</td></tr>
           <tr><td>Auftrag</td><td>{tr.auftrag || "–"}</td></tr>
           <tr><td>Funkkanal</td><td>{tr.funkkanal || "–"}</td></tr>
@@ -280,6 +399,26 @@ const MANNSCHAFT_KEY = "atemschutz:mannschaft";
 // Richtwerte gemäss FKS CSSP CSP "Atemluft- und Sauerstoffbedarf": Verbrauch (l/min) je Belastungsstufe.
 // Der tatsächliche Verbrauch wird weiterhin laufend aus den echten Druckabfragen pro Trupp berechnet;
 // diese Werte dienen nur als Startschätzung, solange noch keine Messwerte vorliegen.
+// Strassenverzeichnis Zuchwil (PLZ 4528), Quelle: OpenStreetMap. Nur für die Autovervollständigung
+// im Adressfeld – eigene/abweichende Adressen (auch ausserhalb Zuchwil) können weiterhin frei eingegeben werden.
+const ZUCHWIL_STRASSEN = [
+  "Aarestrasse", "Aareweg", "Aarmattplatz", "Ahornweg", "Akazienweg", "Allmendweg", "Amselweg", "Asternweg",
+  "Asylweg", "Ausserfeldweg", "Awangerweg", "Bahnweg", "Bühlstrasse", "Bertaweg", "Birchiweg", "Bläsirain",
+  "Bleichenbergstrasse", "Brückenweg", "Brunnackerweg", "Brunnmattstrasse", "Buchenweg", "Buchsweg", "Chutzenplatz",
+  "Dahlienweg", "Dammstrasse", "Dorfackerstrasse", "Dreispitz", "Drosselweg", "Eichenweg", "Emmemweg",
+  "Emmenholzweg", "Emmenspitz", "Emmenweg", "Eschenweg", "Fasanenweg", "Föhrenweg", "Fliederweg", "Flurweg",
+  "Gartenstrasse", "Gewerbestrasse", "Grabackerweg", "Grubenweg", "Haldenweg", "Haltenrain", "Haselweg",
+  "Hauptstrasse", "Härtereistrasse", "Hofstatt", "Industriestrasse", "Innerfeldstrasse", "Ischernstrasse",
+  "Kirchweg", "Kornfeldstrasse", "Kornfeldweg", "Kosciuszkoweg", "Langfeldstrasse", "Langfeldweg", "Lerchenweg",
+  "Lilienweg", "Luterbachstrasse", "Luzernstrasse", "Mattenweg", "Mürgelistrasse", "Meisenweg", "Narzissenweg",
+  "Nelkenweg", "Niedermattstrasse", "Nordsüdstrasse", "Oberes Emmenholz", "Oberfeldstrasse", "Pappelweg",
+  "Pisoniweg", "Platanenweg", "Postweg", "Rainstrasse", "Rütiweg", "Robert-Bosch-Strasse", "Rosenweg",
+  "Schachenweg", "Schützenweg", "Scheibenstandweg", "Schichtstrasse", "Schmiedenweg", "Schulhausstrasse",
+  "Schwalbenweg", "Scintillaplatz", "Spatzenweg", "Sulzerstrasse", "Tannenweg", "Trafostrasse", "Tulpenweg",
+  "Ulmenweg", "Untere Emmengasse", "Unteres Emmenholz", "Unterfeldstrasse", "Veilchenweg", "Wacholderweg",
+  "Waldeggstrasse", "Widistrasse", "Winkelweg", "Zeisigweg",
+];
+
 const BELASTUNGSSTUFEN = [
   { key: "liegen", label: "Liegen", lmin: 5 },
   { key: "sitzen", label: "Sitzen", lmin: 8 },
@@ -323,6 +462,9 @@ function AtemschutzUeberwachung() {
   const [mannschaft, setMannschaft] = useState([]);
   const [showInfoLibrary, setShowInfoLibrary] = useState(false);
   const [viewingDocId, setViewingDocId] = useState(null);
+  const [editingDocNameId, setEditingDocNameId] = useState(null);
+  const [docNameEditText, setDocNameEditText] = useState("");
+  const [uploadWarning, setUploadWarning] = useState("");
   const beep = useBeeper();
   const lastAlarmBeep = useRef({});
   const lastWarnBeep = useRef({});
@@ -335,6 +477,7 @@ function AtemschutzUeberwachung() {
     adf2: "",
     adf3: "",
     einstiegsdruck: 300,
+    adresse: "",
     einsatzort: "",
     auftrag: "",
     funkkanal: "3",
@@ -342,54 +485,96 @@ function AtemschutzUeberwachung() {
   });
 
   useEffect(() => {
+    let unsubs = [];
+    let cancelled = false;
     (async () => {
-      try {
-        const res = await window.storage.get(STORAGE_KEY, false);
-        if (res && res.value) {
-          const parsed = JSON.parse(res.value);
-          if (Array.isArray(parsed)) {
-            setTrupps(parsed);
-            idCounter = parsed.reduce((m, t) => Math.max(m, t.id || 0), 0) + 1;
+      const realtime = typeof window.storage.subscribeOnce === "function";
+      if (realtime) {
+        // Firebase-backed build: subscribe so changes from other devices arrive live.
+        const applyTrupps = (raw) => {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              setTrupps(parsed);
+              idCounter = Math.max(idCounter, parsed.reduce((m, t) => Math.max(m, t.id || 0), 0) + 1);
+            }
+          } catch (e) {}
+        };
+        const applySettings = (raw) => {
+          try { setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) }); } catch (e) {}
+        };
+        const applyEinsaetze = (raw) => {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              setEinsaetze(parsed);
+              const maxArchivedId = parsed.reduce((m, ein) => Math.max(m, ...(ein.trupps || []).map((t) => t.id || 0)), 0);
+              idCounter = Math.max(idCounter, maxArchivedId + 1);
+            }
+          } catch (e) {}
+        };
+        const applyMannschaft = (raw) => {
+          try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) setMannschaft(parsed); } catch (e) {}
+        };
+        try {
+          const coreSubs = [
+            window.storage.subscribeOnce(STORAGE_KEY, applyTrupps),
+            window.storage.subscribeOnce(SETTINGS_KEY, applySettings),
+            window.storage.subscribeOnce(EINSAETZE_KEY, applyEinsaetze),
+            window.storage.subscribeOnce(MANNSCHAFT_KEY, applyMannschaft),
+          ];
+          // infoDocs: use one-Firestore-document-per-file sync when available (keeps large
+          // photos/PDFs out of the 1MB single-document limit); falls back to the classic
+          // single-blob key otherwise.
+          if (typeof window.storage.subscribeCollection === "function") {
+            coreSubs.push(window.storage.subscribeCollection(INFODOCS_KEY, (arr) => setInfoDocs(arr)));
+          } else {
+            const applyInfoDocs = (raw) => {
+              try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) setInfoDocs(parsed); } catch (e) {}
+            };
+            coreSubs.push(window.storage.subscribeOnce(INFODOCS_KEY, applyInfoDocs));
           }
-        }
-      } catch (e) {}
-      try {
-        const res2 = await window.storage.get(SETTINGS_KEY, false);
-        if (res2 && res2.value) {
-          const parsed2 = JSON.parse(res2.value);
-          setSettings({ ...DEFAULT_SETTINGS, ...parsed2 });
-        }
-      } catch (e) {}
-      try {
-        const res3 = await window.storage.get(EINSAETZE_KEY, false);
-        if (res3 && res3.value) {
-          const parsed3 = JSON.parse(res3.value);
-          if (Array.isArray(parsed3)) {
-            setEinsaetze(parsed3);
-            const maxArchivedId = parsed3.reduce(
-              (m, ein) => Math.max(m, ...(ein.trupps || []).map((t) => t.id || 0)),
-              0
-            );
-            idCounter = Math.max(idCounter, maxArchivedId + 1);
+          unsubs = await Promise.all(coreSubs);
+        } catch (e) {}
+      } else {
+        // Classic one-time load (Claude-preview / plain localStorage build, no live multi-device sync).
+        try {
+          const res = await window.storage.get(STORAGE_KEY, false);
+          if (res && res.value) {
+            const parsed = JSON.parse(res.value);
+            if (Array.isArray(parsed)) {
+              setTrupps(parsed);
+              idCounter = parsed.reduce((m, t) => Math.max(m, t.id || 0), 0) + 1;
+            }
           }
-        }
-      } catch (e) {}
-      try {
-        const res4 = await window.storage.get(INFODOCS_KEY, false);
-        if (res4 && res4.value) {
-          const parsed4 = JSON.parse(res4.value);
-          if (Array.isArray(parsed4)) setInfoDocs(parsed4);
-        }
-      } catch (e) {}
-      try {
-        const res5 = await window.storage.get(MANNSCHAFT_KEY, false);
-        if (res5 && res5.value) {
-          const parsed5 = JSON.parse(res5.value);
-          if (Array.isArray(parsed5)) setMannschaft(parsed5);
-        }
-      } catch (e) {}
-      setLoaded(true);
+        } catch (e) {}
+        try {
+          const res2 = await window.storage.get(SETTINGS_KEY, false);
+          if (res2 && res2.value) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(res2.value) });
+        } catch (e) {}
+        try {
+          const res3 = await window.storage.get(EINSAETZE_KEY, false);
+          if (res3 && res3.value) {
+            const parsed3 = JSON.parse(res3.value);
+            if (Array.isArray(parsed3)) {
+              setEinsaetze(parsed3);
+              const maxArchivedId = parsed3.reduce((m, ein) => Math.max(m, ...(ein.trupps || []).map((t) => t.id || 0)), 0);
+              idCounter = Math.max(idCounter, maxArchivedId + 1);
+            }
+          }
+        } catch (e) {}
+        try {
+          const res4 = await window.storage.get(INFODOCS_KEY, false);
+          if (res4 && res4.value) { const parsed4 = JSON.parse(res4.value); if (Array.isArray(parsed4)) setInfoDocs(parsed4); }
+        } catch (e) {}
+        try {
+          const res5 = await window.storage.get(MANNSCHAFT_KEY, false);
+          if (res5 && res5.value) { const parsed5 = JSON.parse(res5.value); if (Array.isArray(parsed5)) setMannschaft(parsed5); }
+        } catch (e) {}
+      }
+      if (!cancelled) setLoaded(true);
     })();
+    return () => { cancelled = true; unsubs.forEach((u) => { try { u && u(); } catch (e) {} }); };
   }, []);
 
   useEffect(() => {
@@ -421,6 +606,7 @@ function AtemschutzUeberwachung() {
 
   useEffect(() => {
     if (!loaded) return;
+    if (typeof window.storage.subscribeCollection === "function") return; // collection-mode writes per item instead
     (async () => {
       try {
         await window.storage.set(INFODOCS_KEY, JSON.stringify(infoDocs), false);
@@ -511,6 +697,7 @@ function AtemschutzUeberwachung() {
       adf2: form.adf2.trim(),
       adf3: form.adf3.trim(),
       einstiegsdruck: Number(form.einstiegsdruck) || 0,
+      adresse: form.adresse.trim(),
       einsatzort: form.einsatzort.trim(),
       auftrag: form.auftrag.trim(),
       funkkanal: form.funkkanal.trim(),
@@ -524,7 +711,7 @@ function AtemschutzUeberwachung() {
     setTrupps((prev) => [t, ...prev]);
     setForm({
       truppfuehrer: "", truppueberwacher: "", adf1: "", adf2: "", adf3: "",
-      einstiegsdruck: 300, einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "",
+      einstiegsdruck: 300, adresse: "", einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "",
     });
     setShowForm(false);
   };
@@ -570,7 +757,7 @@ function AtemschutzUeberwachung() {
     setEditForm({
       truppfuehrer: tr.truppfuehrer, truppueberwacher: tr.truppueberwacher, adf1: tr.adf1, adf2: tr.adf2, adf3: tr.adf3,
       einstiegsdruck: tr.einstiegsdruck,
-      einsatzort: tr.einsatzort, auftrag: tr.auftrag, funkkanal: tr.funkkanal, seilfarbe: tr.seilfarbe,
+      adresse: tr.adresse, einsatzort: tr.einsatzort, auftrag: tr.auftrag, funkkanal: tr.funkkanal, seilfarbe: tr.seilfarbe,
     });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
@@ -586,6 +773,7 @@ function AtemschutzUeberwachung() {
               adf2: editForm.adf2.trim(),
               adf3: editForm.adf3.trim(),
               einstiegsdruck: Number(editForm.einstiegsdruck) || t.einstiegsdruck,
+              adresse: editForm.adresse.trim(),
               einsatzort: editForm.einsatzort.trim(),
               auftrag: editForm.auftrag.trim(),
               funkkanal: editForm.funkkanal.trim(),
@@ -683,23 +871,63 @@ function AtemschutzUeberwachung() {
     if (viewingEinsatzId === id) setViewingEinsatzId(null);
   };
 
-  const handleInfoUpload = (e) => {
+  const handleInfoUpload = async (e) => {
     const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setInfoDocs((prev) => [
-          { id: nextId(), name: file.name, type: file.type || "application/octet-stream", dataUrl: reader.result, addedAt: Date.now() },
-          ...prev,
-        ]);
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = "";
+    const collectionMode = typeof window.storage.addDocument === "function";
+    setUploadWarning("");
+    for (const file of files) {
+      const type = file.type || "application/octet-stream";
+      let dataUrl;
+      if (type.startsWith("image/")) {
+        try {
+          dataUrl = await compressImageToDataUrl(file, 1280, 0.6);
+        } catch (err) {
+          setUploadWarning(`„${file.name}" konnte nicht verarbeitet werden.`);
+          continue;
+        }
+      } else {
+        dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        }).catch(() => null);
+        if (!dataUrl) { setUploadWarning(`„${file.name}" konnte nicht gelesen werden.`); continue; }
+        if (dataUrl.length > 900000) {
+          setUploadWarning(`„${file.name}" ist zu gross (max. ca. 650 KB als PDF). Bitte eine kleinere Datei verwenden.`);
+          continue;
+        }
+      }
+      const docData = { name: file.name, type, dataUrl, addedAt: Date.now() };
+      if (collectionMode) {
+        try { await window.storage.addDocument(INFODOCS_KEY, docData); continue; } catch (err) {}
+      }
+      setInfoDocs((prev) => [{ id: nextId(), ...docData }, ...prev]);
+    }
   };
   const deleteInfoDoc = (id) => {
-    setInfoDocs((prev) => prev.filter((d) => d.id !== id));
+    if (typeof window.storage.deleteDocument === "function") {
+      window.storage.deleteDocument(INFODOCS_KEY, id).catch(() => {});
+    } else {
+      setInfoDocs((prev) => prev.filter((d) => d.id !== id));
+    }
     if (viewingDocId === id) setViewingDocId(null);
+  };
+
+  const startEditDocName = (doc) => { setEditingDocNameId(doc.id); setDocNameEditText(doc.name); };
+  const cancelEditDocName = () => { setEditingDocNameId(null); setDocNameEditText(""); };
+  const saveEditDocName = (id) => {
+    const trimmed = docNameEditText.trim();
+    if (trimmed) {
+      if (typeof window.storage.updateDocument === "function") {
+        window.storage.updateDocument(INFODOCS_KEY, id, { name: trimmed }).catch(() => {});
+      } else {
+        setInfoDocs((prev) => prev.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
+      }
+    }
+    setEditingDocNameId(null);
+    setDocNameEditText("");
   };
 
   const handleMannschaftUpload = (e) => {
@@ -757,6 +985,8 @@ function AtemschutzUeberwachung() {
     doc.line(14, 30, 196, 30);
 
     const infoRows = [
+      ["Adresse", tr.adresse || "–"],
+      ["Einsatzort", tr.einsatzort || "–"],
       ["Mitglieder", members.join(", ") || "–"],
       ["Truppüberwacher", tr.truppueberwacher || "–"],
       ["Auftrag", tr.auftrag || "–"],
@@ -889,20 +1119,207 @@ function AtemschutzUeberwachung() {
   );
 
   const infoDocViewerModal = viewingDoc && (
-    <div className="au-modal-backdrop" style={{ zIndex: 70 }} onClick={() => setViewingDocId(null)}>
-      <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
-        <p className="au-modal-title">{viewingDoc.name}</p>
+    <div className="au-fullscreen-viewer">
+      <div className="au-fullscreen-header">
+        <span className="au-fullscreen-title">{viewingDoc.name}</span>
+        <button className="au-fullscreen-close" onClick={() => setViewingDocId(null)} aria-label="Schliessen">✕</button>
+      </div>
+      <div className="au-fullscreen-body">
         {viewingDoc.type.startsWith("image/") ? (
-          <img src={viewingDoc.dataUrl} alt={viewingDoc.name} style={{ width: "100%", borderRadius: 10 }} />
+          <img src={viewingDoc.dataUrl} alt={viewingDoc.name} className="au-fullscreen-img" />
         ) : (
-          <iframe title={viewingDoc.name} src={viewingDoc.dataUrl} style={{ width: "100%", height: 420, border: "1px solid #E4E7EB", borderRadius: 10 }} />
+          <iframe title={viewingDoc.name} src={viewingDoc.dataUrl} className="au-fullscreen-frame" />
         )}
-        <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 12 }} onClick={() => setViewingDocId(null)}>
-          Schliessen
-        </button>
       </div>
     </div>
   );
+
+      const settingsModal = showSettings && (
+
+        <div className="au-modal-backdrop" onClick={() => setShowSettings(false)}>
+          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Optionen</p>
+
+            <p className="au-modal-subtitle">Luftverbrauch berechnen (FKS-Richtwerte)</p>
+            <div className="au-row2">
+              <div className="au-field">
+                <label>Flascheninhalt (Liter)</label>
+                <input
+                  type="number"
+                  value={settings.flascheninhalt}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 1;
+                    setSettings((s) => {
+                      const stufe = BELASTUNGSSTUFEN.find((b) => b.key === s.belastungsstufe);
+                      return { ...s, flascheninhalt: val, verbrauch: stufe ? Number((stufe.lmin / val).toFixed(1)) : s.verbrauch };
+                    });
+                  }}
+                />
+              </div>
+              <div className="au-field">
+                <label>Belastungsstufe</label>
+                <select
+                  value={settings.belastungsstufe}
+                  onChange={(e) => {
+                    const stufe = BELASTUNGSSTUFEN.find((b) => b.key === e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      belastungsstufe: e.target.value,
+                      verbrauch: stufe ? Number((stufe.lmin / (s.flascheninhalt || 6)).toFixed(1)) : s.verbrauch,
+                    }));
+                  }}
+                >
+                  {BELASTUNGSSTUFEN.map((b) => (
+                    <option key={b.key} value={b.key}>{b.label} (~{b.lmin} l/min)</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="au-row-sub" style={{ marginBottom: 10 }}>
+              Ergibt ca. {(
+                (BELASTUNGSSTUFEN.find((b) => b.key === settings.belastungsstufe)?.lmin || 0) / (settings.flascheninhalt || 6)
+              ).toFixed(1)} bar/min als Startschätzung. Der tatsächliche Verbrauch wird laufend aus den Druckabfragen pro Trupp neu berechnet.
+            </div>
+
+            <div className="au-field">
+              <label>Luftverbrauch – Standardwert (bar/min)</label>
+              <input
+                type="number"
+                value={settings.verbrauch}
+                onChange={(e) => setSettings((s) => ({ ...s, verbrauch: Number(e.target.value) || 0 }))}
+              />
+              <div className="au-row-sub" style={{ marginTop: 2 }}>
+                Wird nur verwendet, bis genug Druckabfragen für eine Berechnung pro Trupp vorliegen.
+              </div>
+            </div>
+
+            <label className="au-checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.warnSoundEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, warnSoundEnabled: e.target.checked }))}
+              />
+              Ton bei Erreichen des Rückzugsdrucks
+            </label>
+            <div className="au-field">
+              <label>Abfragezeit</label>
+              <div className="au-slider-value">{settings.abfragezeit} min</div>
+              <input
+                type="range"
+                className="au-slider"
+                min={1}
+                max={10}
+                step={1}
+                list="au-abfragezeit-ticks"
+                value={settings.abfragezeit}
+                onChange={(e) => setSettings((s) => ({ ...s, abfragezeit: Number(e.target.value) }))}
+              />
+              <datalist id="au-abfragezeit-ticks">
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v} />)}
+              </datalist>
+              <div className="au-slider-scale">
+                <span>1</span><span>10</span>
+              </div>
+            </div>
+
+            {trupps.length > 0 && (
+              <button
+                className="au-btn au-btn-ghost"
+                style={{ width: "100%", marginBottom: 8 }}
+                onClick={() => { setShowSettings(false); exportPdf(trupps, "Alle-Trupps"); }}
+              >
+                📤 Alle Trupps als PDF teilen
+              </button>
+            )}
+
+            <p className="au-modal-subtitle">Einsatz abschliessen</p>
+            {!confirmingArchive ? (
+              <button
+                className="au-btn au-btn-ghost"
+                style={{ width: "100%", marginBottom: 8 }}
+                disabled={trupps.length === 0}
+                onClick={() => setConfirmingArchive(true)}
+              >
+                📦 Einsatz abschliessen & archivieren
+              </button>
+            ) : (
+              <div style={{ marginBottom: 8 }}>
+                <div className="au-row-sub" style={{ marginBottom: 8 }}>
+                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" und leert das aktuelle Dashboard für den nächsten Einsatz.
+                </div>
+                <div className="au-formbtns">
+                  <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
+                  <button className="au-btn au-btn-primary" onClick={archiveEinsatz}>Ja, abschliessen</button>
+                </div>
+              </div>
+            )}
+            {einsaetze.length > 0 && (
+              <button
+                className="au-btn au-btn-ghost"
+                style={{ width: "100%", marginBottom: 8 }}
+                onClick={() => { setShowSettings(false); setScreen("archiv"); }}
+              >
+                📁 Vergangene Einsätze ansehen ({einsaetze.length})
+              </button>
+            )}
+
+            <p className="au-modal-subtitle">Atemschutz-Infos</p>
+            <label className="au-btn au-btn-primary au-upload-label">
+              + Dokument oder Foto hochladen
+              <input type="file" accept="image/*,application/pdf" multiple onChange={handleInfoUpload} style={{ display: "none" }} />
+            </label>
+            {uploadWarning && (
+              <div className="au-row-sub" style={{ color: "#D9483D", marginBottom: 8 }}>{uploadWarning}</div>
+            )}
+            {infoDocs.length > 0 && (
+              <div className="au-infolist">
+                {infoDocs.map((doc) => (
+                  <div key={doc.id} className="au-infolist-row">
+                    {editingDocNameId === doc.id ? (
+                      <>
+                        <input
+                          autoFocus
+                          className="au-infolist-nameinput"
+                          value={docNameEditText}
+                          onChange={(e) => setDocNameEditText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEditDocName(doc.id); }}
+                        />
+                        <button className="au-infolist-del" onClick={() => saveEditDocName(doc.id)}>✓</button>
+                        <button className="au-infolist-del" onClick={cancelEditDocName}>✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="au-infolist-name">{doc.name}</span>
+                        <button className="au-infolist-edit" onClick={() => startEditDocName(doc)}>✎</button>
+                        <button className="au-infolist-del" onClick={() => deleteInfoDoc(doc.id)}>Löschen</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="au-modal-subtitle">Mannschaftsliste</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Namen (eine pro Zeile oder mit Komma getrennt) als .txt/.csv hochladen – erscheinen dann als Vorschläge bei Truppführer, ADF und Truppüberwacher. Manuelle Eingabe bleibt weiterhin möglich.
+            </div>
+            <label className="au-btn au-btn-primary au-upload-label">
+              + Mannschaftsliste hochladen
+              <input type="file" accept=".txt,.csv,text/plain,text/csv" onChange={handleMannschaftUpload} style={{ display: "none" }} />
+            </label>
+            {mannschaft.length > 0 && (
+              <div className="au-row-sub" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span>{mannschaft.length} Namen hinterlegt</span>
+                <button className="au-infolist-del" onClick={clearMannschaft}>Liste löschen</button>
+              </div>
+            )}
+
+            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
+              Fertig
+            </button>
+          </div>
+        </div>
+      );
 
   const styleBlock = (
     <style>{`
@@ -911,7 +1328,8 @@ function AtemschutzUeberwachung() {
       .au-app { font-family: 'Inter', -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
 
       /* ---- start screen (dark splash) ---- */
-      .au-start-root { min-height: 100vh; background: #12151A; color: #F5F6F7; }
+      .au-start-root { min-height: 100vh; background: #12151A; color: #F5F6F7; position: relative; }
+      .au-start-gear { position: absolute; top: 18px; right: 18px; background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; z-index: 5; }
       .au-start { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
       .au-logo-ring { width: 168px; height: 168px; border-radius: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px #2E353D, 0 20px 50px -18px rgba(0,0,0,0.8); margin-bottom: 26px; overflow: hidden; }
       .au-logo-ring img { width: 100%; height: 100%; object-fit: contain; background: #000; }
@@ -975,6 +1393,8 @@ function AtemschutzUeberwachung() {
       .au-infolist-row:last-child { border-bottom: none; }
       .au-infolist-name { font-size: 13px; color: #1A1D21; word-break: break-word; }
       .au-infolist-del { font-size: 11.5px; color: #D9483D; background: none; border: 1px solid #D9483D; border-radius: 999px; padding: 4px 10px; flex-shrink: 0; }
+      .au-infolist-edit { font-size: 12px; color: #6B7280; background: none; border: none; flex-shrink: 0; padding: 2px 4px; }
+      .au-infolist-nameinput { flex: 1; min-width: 0; border: 1px solid #E4E7EB; border-radius: 6px; padding: 4px 8px; font-size: 12.5px; }
       .au-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
       .au-info-thumb { border-radius: 10px; overflow: hidden; background: #F3F4F6; border: 1px solid #E4E7EB; cursor: pointer; display: flex; flex-direction: column; }
       .au-info-thumb-media { aspect-ratio: 1; width: 100%; display: flex; align-items: center; justify-content: center; background: #EEF0F2; overflow: hidden; }
@@ -1049,6 +1469,13 @@ function AtemschutzUeberwachung() {
       .au-editform { padding: 4px 18px 6px; border-top: 1px solid #F0F1F3; margin-top: 4px; }
 
       .au-print-only { display: none; }
+      .au-fullscreen-viewer { position: fixed; inset: 0; z-index: 80; background: #0A0C0F; display: flex; flex-direction: column; }
+      .au-fullscreen-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top)); background: #14171B; border-bottom: 1px solid #262C33; }
+      .au-fullscreen-title { color: #F5F6F7; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .au-fullscreen-close { background: rgba(255,255,255,0.1); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 16px; flex-shrink: 0; }
+      .au-fullscreen-body { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: env(safe-area-inset-bottom) 0 0; }
+      .au-fullscreen-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .au-fullscreen-frame { width: 100%; height: 100%; border: none; background: #fff; }
       @media print {
         .au-app > *:not(.au-print-only) { display: none !important; }
         .au-print-only { display: block !important; background: #fff; color: #000; padding: 10px; }
@@ -1073,6 +1500,7 @@ function AtemschutzUeberwachung() {
     return (
       <div className="au-app au-start-root">
         {styleBlock}
+        <button className="au-start-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
         <div className="au-start">
           <div className="au-logo-ring"><img src={LOGO_SRC} alt="Feuerwehr Zuchwil Logo" /></div>
           <p className="au-start-eyebrow">Feuerwehr Zuchwil</p>
@@ -1095,6 +1523,7 @@ function AtemschutzUeberwachung() {
         </div>
         {infoLibraryModal}
         {infoDocViewerModal}
+        {settingsModal}
       </div>
     );
   }
@@ -1191,7 +1620,6 @@ function AtemschutzUeberwachung() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="au-gear" onClick={() => setShowInfoLibrary(true)} aria-label="Atemschutz-Infos">📎</button>
-          <button className="au-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
         </div>
       </div>
 
@@ -1202,6 +1630,12 @@ function AtemschutzUeberwachung() {
           ))}
         </datalist>
       )}
+
+      <datalist id="au-strassen-list">
+        {ZUCHWIL_STRASSEN.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
 
       <div className="au-body">
         {!showForm && (
@@ -1229,6 +1663,15 @@ function AtemschutzUeberwachung() {
             <div className="au-field">
               <label>Einstiegsdruck (kleinster Druck im Trupp)</label>
               <input type="number" value={form.einstiegsdruck} onChange={(e) => setForm({ ...form, einstiegsdruck: e.target.value })} />
+            </div>
+            <div className="au-field">
+              <label>Adresse</label>
+              <input
+                placeholder="Strasse, Nr., Ort"
+                value={form.adresse}
+                onChange={(e) => setForm({ ...form, adresse: e.target.value })}
+                list="au-strassen-list"
+              />
             </div>
             <div className="au-field">
               <label>Einsatzort</label>
@@ -1271,7 +1714,7 @@ function AtemschutzUeberwachung() {
                   {members.length > 0 && <div className="au-row-sub">{members.join(", ")}</div>}
                   {tr.truppueberwacher && <div className="au-row-sub">Überwacher: {tr.truppueberwacher}</div>}
                   {(tr.einsatzort || tr.auftrag) && (
-                    <div className="au-row-sub" style={{ marginTop: 4 }}>{[tr.einsatzort, tr.auftrag].filter(Boolean).join(" · ")}</div>
+                    <div className="au-row-sub" style={{ marginTop: 4 }}>{[tr.adresse, tr.einsatzort, tr.auftrag].filter(Boolean).join(" · ")}</div>
                   )}
                   <div className="au-row-sub">Einstiegsdruck {tr.einstiegsdruck} bar{tr.funkkanal ? ` · Kanal ${tr.funkkanal}` : ""}{tr.seilfarbe ? ` · Seil ${tr.seilfarbe}` : ""}</div>
                 </div>
@@ -1296,6 +1739,10 @@ function AtemschutzUeberwachung() {
                     <div className="au-field">
                       <label>Einstiegsdruck</label>
                       <input type="number" value={editForm.einstiegsdruck} onChange={(e) => setEditForm({ ...editForm, einstiegsdruck: e.target.value })} />
+                    </div>
+                    <div className="au-field">
+                      <label>Adresse</label>
+                      <input value={editForm.adresse} onChange={(e) => setEditForm({ ...editForm, adresse: e.target.value })} list="au-strassen-list" />
                     </div>
                     <div className="au-field">
                       <label>Einsatzort</label>
@@ -1430,6 +1877,10 @@ function AtemschutzUeberwachung() {
                     <input type="number" value={editForm.einstiegsdruck} onChange={(e) => setEditForm({ ...editForm, einstiegsdruck: e.target.value })} />
                   </div>
                   <div className="au-field">
+                    <label>Adresse</label>
+                    <input value={editForm.adresse} onChange={(e) => setEditForm({ ...editForm, adresse: e.target.value })} list="au-strassen-list" />
+                  </div>
+                  <div className="au-field">
                     <label>Einsatzort</label>
                     <input value={editForm.einsatzort} onChange={(e) => setEditForm({ ...editForm, einsatzort: e.target.value })} />
                   </div>
@@ -1463,11 +1914,12 @@ function AtemschutzUeberwachung() {
                     <div className="au-row-sub">Einsatzzeit{tr.status === "returning" ? " · Rückweg" : ""}</div>
                   </div>
                 </div>
-                {tr.einsatzort && (
+                {(tr.adresse || tr.einsatzort) && (
                   <div className="au-row">
                     <div className="au-row-icon"><IconPin /></div>
                     <div>
-                      <div className="au-row-main">{tr.einsatzort}</div>
+                      <div className="au-row-main">{tr.adresse || tr.einsatzort}</div>
+                      {tr.adresse && tr.einsatzort && <div className="au-row-sub">{tr.einsatzort}</div>}
                       {tr.auftrag && <div className="au-row-sub">{tr.auftrag}</div>}
                     </div>
                   </div>
@@ -1525,172 +1977,6 @@ function AtemschutzUeberwachung() {
           </>
         )}
       </div>
-
-      {showSettings && (
-        <div className="au-modal-backdrop" onClick={() => setShowSettings(false)}>
-          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
-            <p className="au-modal-title">Optionen</p>
-
-            <p className="au-modal-subtitle">Luftverbrauch berechnen (FKS-Richtwerte)</p>
-            <div className="au-row2">
-              <div className="au-field">
-                <label>Flascheninhalt (Liter)</label>
-                <input
-                  type="number"
-                  value={settings.flascheninhalt}
-                  onChange={(e) => {
-                    const val = Number(e.target.value) || 1;
-                    setSettings((s) => {
-                      const stufe = BELASTUNGSSTUFEN.find((b) => b.key === s.belastungsstufe);
-                      return { ...s, flascheninhalt: val, verbrauch: stufe ? Number((stufe.lmin / val).toFixed(1)) : s.verbrauch };
-                    });
-                  }}
-                />
-              </div>
-              <div className="au-field">
-                <label>Belastungsstufe</label>
-                <select
-                  value={settings.belastungsstufe}
-                  onChange={(e) => {
-                    const stufe = BELASTUNGSSTUFEN.find((b) => b.key === e.target.value);
-                    setSettings((s) => ({
-                      ...s,
-                      belastungsstufe: e.target.value,
-                      verbrauch: stufe ? Number((stufe.lmin / (s.flascheninhalt || 6)).toFixed(1)) : s.verbrauch,
-                    }));
-                  }}
-                >
-                  {BELASTUNGSSTUFEN.map((b) => (
-                    <option key={b.key} value={b.key}>{b.label} (~{b.lmin} l/min)</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="au-row-sub" style={{ marginBottom: 10 }}>
-              Ergibt ca. {(
-                (BELASTUNGSSTUFEN.find((b) => b.key === settings.belastungsstufe)?.lmin || 0) / (settings.flascheninhalt || 6)
-              ).toFixed(1)} bar/min als Startschätzung. Der tatsächliche Verbrauch wird laufend aus den Druckabfragen pro Trupp neu berechnet.
-            </div>
-
-            <div className="au-field">
-              <label>Luftverbrauch – Standardwert (bar/min)</label>
-              <input
-                type="number"
-                value={settings.verbrauch}
-                onChange={(e) => setSettings((s) => ({ ...s, verbrauch: Number(e.target.value) || 0 }))}
-              />
-              <div className="au-row-sub" style={{ marginTop: 2 }}>
-                Wird nur verwendet, bis genug Druckabfragen für eine Berechnung pro Trupp vorliegen.
-              </div>
-            </div>
-
-            <label className="au-checkbox-row">
-              <input
-                type="checkbox"
-                checked={settings.warnSoundEnabled}
-                onChange={(e) => setSettings((s) => ({ ...s, warnSoundEnabled: e.target.checked }))}
-              />
-              Ton bei Erreichen des Rückzugsdrucks
-            </label>
-            <div className="au-field">
-              <label>Abfragezeit</label>
-              <div className="au-slider-value">{settings.abfragezeit} min</div>
-              <input
-                type="range"
-                className="au-slider"
-                min={1}
-                max={10}
-                step={1}
-                list="au-abfragezeit-ticks"
-                value={settings.abfragezeit}
-                onChange={(e) => setSettings((s) => ({ ...s, abfragezeit: Number(e.target.value) }))}
-              />
-              <datalist id="au-abfragezeit-ticks">
-                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v} />)}
-              </datalist>
-              <div className="au-slider-scale">
-                <span>1</span><span>10</span>
-              </div>
-            </div>
-
-            {trupps.length > 0 && (
-              <button
-                className="au-btn au-btn-ghost"
-                style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowSettings(false); exportPdf(trupps, "Alle-Trupps"); }}
-              >
-                📤 Alle Trupps als PDF teilen
-              </button>
-            )}
-
-            <p className="au-modal-subtitle">Einsatz abschliessen</p>
-            {!confirmingArchive ? (
-              <button
-                className="au-btn au-btn-ghost"
-                style={{ width: "100%", marginBottom: 8 }}
-                disabled={trupps.length === 0}
-                onClick={() => setConfirmingArchive(true)}
-              >
-                📦 Einsatz abschliessen & archivieren
-              </button>
-            ) : (
-              <div style={{ marginBottom: 8 }}>
-                <div className="au-row-sub" style={{ marginBottom: 8 }}>
-                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" und leert das aktuelle Dashboard für den nächsten Einsatz.
-                </div>
-                <div className="au-formbtns">
-                  <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
-                  <button className="au-btn au-btn-primary" onClick={archiveEinsatz}>Ja, abschliessen</button>
-                </div>
-              </div>
-            )}
-            {einsaetze.length > 0 && (
-              <button
-                className="au-btn au-btn-ghost"
-                style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowSettings(false); setScreen("archiv"); }}
-              >
-                📁 Vergangene Einsätze ansehen ({einsaetze.length})
-              </button>
-            )}
-
-            <p className="au-modal-subtitle">Atemschutz-Infos</p>
-            <label className="au-btn au-btn-primary au-upload-label">
-              + Dokument oder Foto hochladen
-              <input type="file" accept="image/*,application/pdf" multiple onChange={handleInfoUpload} style={{ display: "none" }} />
-            </label>
-            {infoDocs.length > 0 && (
-              <div className="au-infolist">
-                {infoDocs.map((doc) => (
-                  <div key={doc.id} className="au-infolist-row">
-                    <span className="au-infolist-name">{doc.name}</span>
-                    <button className="au-infolist-del" onClick={() => deleteInfoDoc(doc.id)}>Löschen</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <p className="au-modal-subtitle">Mannschaftsliste</p>
-            <div className="au-row-sub" style={{ marginBottom: 8 }}>
-              Namen (eine pro Zeile oder mit Komma getrennt) als .txt/.csv hochladen – erscheinen dann als Vorschläge bei Truppführer, ADF und Truppüberwacher. Manuelle Eingabe bleibt weiterhin möglich.
-            </div>
-            <label className="au-btn au-btn-primary au-upload-label">
-              + Mannschaftsliste hochladen
-              <input type="file" accept=".txt,.csv,text/plain,text/csv" onChange={handleMannschaftUpload} style={{ display: "none" }} />
-            </label>
-            {mannschaft.length > 0 && (
-              <div className="au-row-sub" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span>{mannschaft.length} Namen hinterlegt</span>
-                <button className="au-infolist-del" onClick={clearMannschaft}>Liste löschen</button>
-              </div>
-            )}
-
-            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
-              Fertig
-            </button>
-          </div>
-        </div>
-      )}
 
       {endingId && (
         <div className="au-modal-backdrop" onClick={() => setEndingId(null)}>
