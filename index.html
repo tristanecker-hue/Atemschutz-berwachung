@@ -402,7 +402,7 @@ function TruppReport({ tr, verbrauchFallback }) {
       </table>
       <div className="au-report-subtitle">Druckabfragen</div>
       {getAuftragSegments(tr).map((seg, i) => (
-        <div key={i} className={i > 0 ? "au-report-segment-break" : ""} style={{ marginBottom: 10 }}>
+        <div key={i} className="au-report-segment-break" style={{ marginBottom: 10 }}>
           <div className="au-report-segment-title">
             Protokoll {getAuftragSegments(tr).length > 1 ? `${i + 1}/${getAuftragSegments(tr).length} · ` : ""}
             Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: {seg.status}
@@ -1148,7 +1148,9 @@ function AtemschutzUeberwachung() {
     let cursorY = doc.lastAutoTable.finalY + 8;
     segments.forEach((seg, i) => {
       // Jeder Auftrag bekommt eine eigene Seite, damit sich die Protokolle klar trennen lassen.
-      if (i > 0 || cursorY > 260) { doc.addPage(); cursorY = 20; }
+      // Jedes Protokoll (auch das erste) bekommt eine eigene Seite – Kopf/Übersicht bleibt allein auf Seite 1.
+      doc.addPage();
+      cursorY = 20;
       doc.setFontSize(10);
       doc.setFont(undefined, "bold");
       doc.text(
@@ -1177,6 +1179,16 @@ function AtemschutzUeberwachung() {
   // Exports the given Trupps as a PDF. On the standalone build (jsPDF loaded via CDN) this creates
   // a real PDF and opens the native share sheet (Mail, OneDrive, Save to Files, ...). Falls back to
   // the browser print dialog where jsPDF isn't available (e.g. this Claude preview).
+  // Baut den Dateinamen für den PDF-Export aus Datum + Einsatzadresse (Strasse/Ort, sonst Einsatzort).
+  const buildExportFilename = (list) => {
+    const withAddress = (list || []).find((t) => t.strasse || t.ort) || (list || [])[0] || {};
+    const dateSource = withAddress.startTime || withAddress.endTime || Date.now();
+    const dateStr = new Date(dateSource).toLocaleDateString("de-DE").split(".").join("-");
+    const addressStr = [withAddress.strasse, withAddress.ort].filter(Boolean).join(" ") || withAddress.einsatzort || "Einsatz";
+    const safe = addressStr.replace(/[\/\\?%*:|"<>]/g, "").replace(/\s+/g, "_");
+    return `${dateStr}_${safe}`;
+  };
+
   const exportPdf = async (list, filenameBase) => {
     if (!list || list.length === 0) return;
     if (typeof window.jspdf !== "undefined" && window.jspdf.jsPDF) {
@@ -1219,7 +1231,7 @@ function AtemschutzUeberwachung() {
               <button
                 className="au-btn au-btn-ghost"
                 style={{ width: "100%", marginTop: 12 }}
-                onClick={() => exportPdf([tr], tr.truppfuehrer || "Trupp")}
+                onClick={() => exportPdf([tr], buildExportFilename([tr]))}
               >
                 📤 PDF teilen / exportieren
               </button>
@@ -1393,7 +1405,7 @@ function AtemschutzUeberwachung() {
               <button
                 className="au-btn au-btn-ghost"
                 style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowSettings(false); exportPdf(trupps, "Alle-Trupps"); }}
+                onClick={() => { setShowSettings(false); exportPdf(trupps, buildExportFilename(trupps)); }}
               >
                 📤 Alle Trupps als PDF teilen
               </button>
@@ -1756,7 +1768,7 @@ function AtemschutzUeberwachung() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button className="au-donecard-btn" onClick={() => setViewingEinsatzId(ein.id)}>Ansehen</button>
-                  <button className="au-donecard-btn" onClick={() => exportPdf(ein.trupps || [], `Einsatz-${ein.id}`)}>PDF (alle)</button>
+                  <button className="au-donecard-btn" onClick={() => exportPdf(ein.trupps || [], buildExportFilename(ein.trupps || []))}>PDF (alle)</button>
                   {confirmingDeleteEinsatz === ein.id ? (
                     <>
                       <button className="au-donecard-btn" style={{ color: "#D9483D", borderColor: "#D9483D" }} onClick={() => deleteEinsatz(ein.id)}>
@@ -1785,7 +1797,7 @@ function AtemschutzUeberwachung() {
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button className="au-donecard-btn" onClick={() => setViewingId(tr.id)}>Ansehen</button>
-                    <button className="au-donecard-btn" onClick={() => exportPdf([tr], tr.truppfuehrer || "Trupp")}>PDF</button>
+                    <button className="au-donecard-btn" onClick={() => exportPdf([tr], buildExportFilename([tr]))}>PDF</button>
                   </div>
                 </div>
               ))}
@@ -2222,7 +2234,7 @@ function AtemschutzUeberwachung() {
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button className="au-donecard-btn" onClick={() => setViewingId(tr.id)}>Ansehen</button>
-                  <button className="au-donecard-btn" onClick={() => exportPdf([tr], tr.truppfuehrer || "Trupp")}>PDF</button>
+                  <button className="au-donecard-btn" onClick={() => exportPdf([tr], buildExportFilename([tr]))}>PDF</button>
                 </div>
               </div>
             ))}
