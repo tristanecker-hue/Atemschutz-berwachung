@@ -276,6 +276,7 @@ const STORAGE_KEY = "atemschutz:trupps";
 const SETTINGS_KEY = "atemschutz:settings";
 const EINSAETZE_KEY = "atemschutz:einsaetze";
 const INFODOCS_KEY = "atemschutz:infodocs";
+const MANNSCHAFT_KEY = "atemschutz:mannschaft";
 // Richtwerte gemäss FKS CSSP CSP "Atemluft- und Sauerstoffbedarf": Verbrauch (l/min) je Belastungsstufe.
 // Der tatsächliche Verbrauch wird weiterhin laufend aus den echten Druckabfragen pro Trupp berechnet;
 // diese Werte dienen nur als Startschätzung, solange noch keine Messwerte vorliegen.
@@ -289,8 +290,6 @@ const BELASTUNGSSTUFEN = [
 const DEFAULT_SETTINGS = {
   verbrauch: 5,
   abfragezeit: 10,
-  ort: "",
-  strasse: "",
   flascheninhalt: 6,
   belastungsstufe: "marsch",
   warnSoundEnabled: true,
@@ -311,7 +310,6 @@ function AtemschutzUeberwachung() {
   const [editForm, setEditForm] = useState(null);
   const [viewingId, setViewingId] = useState(null);
   const [printMode, setPrintMode] = useState(null);
-  const [editingAddress, setEditingAddress] = useState(false);
   const [expandedMsgs, setExpandedMsgs] = useState({});
   const [endingId, setEndingId] = useState(null);
   const [endPressureInput, setEndPressureInput] = useState("");
@@ -322,6 +320,7 @@ function AtemschutzUeberwachung() {
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [confirmingDeleteEinsatz, setConfirmingDeleteEinsatz] = useState(null);
   const [infoDocs, setInfoDocs] = useState([]);
+  const [mannschaft, setMannschaft] = useState([]);
   const [showInfoLibrary, setShowInfoLibrary] = useState(false);
   const [viewingDocId, setViewingDocId] = useState(null);
   const beep = useBeeper();
@@ -382,6 +381,13 @@ function AtemschutzUeberwachung() {
           if (Array.isArray(parsed4)) setInfoDocs(parsed4);
         }
       } catch (e) {}
+      try {
+        const res5 = await window.storage.get(MANNSCHAFT_KEY, false);
+        if (res5 && res5.value) {
+          const parsed5 = JSON.parse(res5.value);
+          if (Array.isArray(parsed5)) setMannschaft(parsed5);
+        }
+      } catch (e) {}
       setLoaded(true);
     })();
   }, []);
@@ -421,6 +427,15 @@ function AtemschutzUeberwachung() {
       } catch (e) {}
     })();
   }, [infoDocs, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        await window.storage.set(MANNSCHAFT_KEY, JSON.stringify(mannschaft), false);
+      } catch (e) {}
+    })();
+  }, [mannschaft, loaded]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -651,15 +666,12 @@ function AtemschutzUeberwachung() {
     );
     const archived = {
       id: nextId(),
-      ort: settings.ort,
-      strasse: settings.strasse,
       startedAt: startedAt || Date.now(),
       endedAt: Date.now(),
       trupps,
     };
     setEinsaetze((prev) => [archived, ...prev]);
     setTrupps([]);
-    setSettings((s) => ({ ...s, ort: "", strasse: "" }));
     setConfirmingArchive(false);
     setShowSettings(false);
     setScreen("start");
@@ -689,6 +701,24 @@ function AtemschutzUeberwachung() {
     setInfoDocs((prev) => prev.filter((d) => d.id !== id));
     if (viewingDocId === id) setViewingDocId(null);
   };
+
+  const handleMannschaftUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || "");
+      const names = text
+        .split(/[\n,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const unique = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, "de"));
+      setMannschaft(unique);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+  const clearMannschaft = () => setMannschaft([]);
 
   useEffect(() => {
     if (!printMode) return;
@@ -867,10 +897,9 @@ function AtemschutzUeberwachung() {
         ) : (
           <iframe title={viewingDoc.name} src={viewingDoc.dataUrl} style={{ width: "100%", height: 420, border: "1px solid #E4E7EB", borderRadius: 10 }} />
         )}
-        <div className="au-formbtns" style={{ marginTop: 12 }}>
-          <button className="au-btn au-btn-ghost" onClick={() => deleteInfoDoc(viewingDoc.id)}>Löschen</button>
-          <button className="au-btn au-btn-primary" onClick={() => setViewingDocId(null)}>Schliessen</button>
-        </div>
+        <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 12 }} onClick={() => setViewingDocId(null)}>
+          Schliessen
+        </button>
       </div>
     </div>
   );
@@ -888,13 +917,10 @@ function AtemschutzUeberwachung() {
       .au-logo-ring img { width: 100%; height: 100%; object-fit: contain; background: #000; }
       .au-start-eyebrow { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #8A93A0; margin: 0 0 8px; }
       .au-start-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.15; margin: 0 0 30px; max-width: 320px; }
-      .au-start-btn { width: 100%; max-width: 320px; padding: 17px; border-radius: 13px; border: none; background: #F2A93B; color: #12151A; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.05em; text-transform: uppercase; }
+      .au-start-btn { width: 100%; max-width: 320px; padding: 17px; border-radius: 13px; border: none; background: #F2A93B; color: #12151A; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 12px; }
+      .au-start-btn-secondary { width: 100%; max-width: 320px; padding: 12px; border-radius: 11px; border: 1.5px solid #3A424B; background: transparent; color: #C7CDD3; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; }
       .au-start-clock { margin-top: 22px; font-family: 'Inter', monospace; font-size: 13px; color: #4A535C; }
       .au-start-resume { margin-top: 14px; font-size: 12.5px; color: #F2A93B; background: none; border: none; }
-      .au-address-display { background: none; border: none; color: #C7CDD3; font-size: 14px; line-height: 1.5; margin-bottom: 22px; display: flex; align-items: center; gap: 8px; text-align: center; }
-      .au-address-pencil { color: #6C7580; font-size: 12px; }
-      .au-address-form { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; margin-bottom: 22px; }
-      .au-address-form input { background: #1C2127; border: 1px solid #2E353D; border-radius: 9px; padding: 11px 13px; color: #F5F6F7; font-family: 'Inter', sans-serif; font-size: 15px; }
 
       /* ---- dashboard (light) ---- */
       .au-root { min-height: 100vh; background: #F3F4F6; color: #1A1D21; }
@@ -944,6 +970,11 @@ function AtemschutzUeberwachung() {
       .au-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1A1D21; margin: 4px 0 14px; }
       .au-checkbox-row input { width: 18px; height: 18px; }
       .au-upload-label { display: block; width: 100%; text-align: center; margin-bottom: 10px; cursor: pointer; }
+      .au-infolist { max-height: 160px; overflow-y: auto; border: 1px solid #E4E7EB; border-radius: 10px; margin-bottom: 12px; }
+      .au-infolist-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #F0F1F3; }
+      .au-infolist-row:last-child { border-bottom: none; }
+      .au-infolist-name { font-size: 13px; color: #1A1D21; word-break: break-word; }
+      .au-infolist-del { font-size: 11.5px; color: #D9483D; background: none; border: 1px solid #D9483D; border-radius: 999px; padding: 4px 10px; flex-shrink: 0; }
       .au-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
       .au-info-thumb { border-radius: 10px; overflow: hidden; background: #F3F4F6; border: 1px solid #E4E7EB; cursor: pointer; display: flex; flex-direction: column; }
       .au-info-thumb-media { aspect-ratio: 1; width: 100%; display: flex; align-items: center; justify-content: center; background: #EEF0F2; overflow: hidden; }
@@ -1039,47 +1070,17 @@ function AtemschutzUeberwachung() {
   );
 
   if (screen === "start") {
-    const hasAddress = settings.strasse || settings.ort;
     return (
       <div className="au-app au-start-root">
         {styleBlock}
         <div className="au-start">
           <div className="au-logo-ring"><img src={LOGO_SRC} alt="Feuerwehr Zuchwil Logo" /></div>
           <p className="au-start-eyebrow">Feuerwehr Zuchwil</p>
-          <h1 className="au-start-title">Atemschutz­überwachung</h1>
+          <h1 className="au-start-title">Atemschutz</h1>
 
-          {!editingAddress && (
-            <button className="au-address-display" onClick={() => setEditingAddress(true)}>
-              {hasAddress ? (
-                <>
-                  <div>{settings.strasse}</div>
-                  <div>{settings.ort}</div>
-                </>
-              ) : (
-                <div>+ Einsatzadresse erfassen</div>
-              )}
-              <span className="au-address-pencil">✎</span>
-            </button>
-          )}
-          {editingAddress && (
-            <div className="au-address-form">
-              <input
-                placeholder="Strasse, Nr."
-                value={settings.strasse}
-                onChange={(e) => setSettings((s) => ({ ...s, strasse: e.target.value }))}
-              />
-              <input
-                placeholder="Ort"
-                value={settings.ort}
-                onChange={(e) => setSettings((s) => ({ ...s, ort: e.target.value }))}
-              />
-              <button className="au-start-btn" style={{ padding: "12px" }} onClick={() => setEditingAddress(false)}>
-                Speichern
-              </button>
-            </div>
-          )}
+          <button className="au-start-btn" onClick={() => setScreen("operation")}>Atemschutzüberwachung</button>
+          <button className="au-start-btn-secondary" onClick={() => setShowInfoLibrary(true)}>Atemschutz Infos</button>
 
-          <button className="au-start-btn" onClick={() => setScreen("operation")}>Einsatz starten</button>
           {activeTrupps.length > 0 && (
             <button className="au-start-resume" onClick={() => setScreen("operation")}>
               {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} bereits im Einsatz →
@@ -1090,9 +1091,6 @@ function AtemschutzUeberwachung() {
               📁 Vergangene Einsätze ({einsaetze.length})
             </button>
           )}
-          <button className="au-start-resume" onClick={() => setShowInfoLibrary(true)}>
-            📎 Atemschutz-Infos {infoDocs.length > 0 ? `(${infoDocs.length})` : ""}
-          </button>
           <div className="au-start-clock">{fmtClock(new Date(now))}</div>
         </div>
         {infoLibraryModal}
@@ -1121,20 +1119,22 @@ function AtemschutzUeberwachung() {
           )}
 
           {!viewingEinsatz &&
-            einsaetze.map((ein) => (
-              <div key={ein.id} className="au-donecard" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: "#1A1D21" }}>
-                      {[ein.strasse, ein.ort].filter(Boolean).join(", ") || "Ohne Adresse"}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#9AA1A9", marginTop: 2 }}>
-                      {new Date(ein.startedAt).toLocaleString("de-DE")} · {(ein.trupps || []).length} Trupp{(ein.trupps || []).length === 1 ? "" : "s"}
+            einsaetze.map((ein) => {
+              const orte = Array.from(new Set((ein.trupps || []).map((t) => t.einsatzort).filter(Boolean)));
+              return (
+                <div key={ein.id} className="au-donecard" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "#1A1D21" }}>
+                        {orte.length > 0 ? orte.join(", ") : `Einsatz vom ${new Date(ein.startedAt).toLocaleDateString("de-DE")}`}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#9AA1A9", marginTop: 2 }}>
+                        {new Date(ein.startedAt).toLocaleString("de-DE")} · {(ein.trupps || []).length} Trupp{(ein.trupps || []).length === 1 ? "" : "s"}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button className="au-donecard-btn" onClick={() => setViewingEinsatzId(ein.id)}>Ansehen</button>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button className="au-donecard-btn" onClick={() => setViewingEinsatzId(ein.id)}>Ansehen</button>
                   <button className="au-donecard-btn" onClick={() => exportPdf(ein.trupps || [], `Einsatz-${ein.id}`)}>PDF (alle)</button>
                   {confirmingDeleteEinsatz === ein.id ? (
                     <>
@@ -1148,7 +1148,8 @@ function AtemschutzUeberwachung() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
 
           {viewingEinsatz && (
             <>
@@ -1194,6 +1195,14 @@ function AtemschutzUeberwachung() {
         </div>
       </div>
 
+      {mannschaft.length > 0 && (
+        <datalist id="au-mannschaft-list">
+          {mannschaft.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      )}
+
       <div className="au-body">
         {!showForm && (
           <button className="au-addbtn" onClick={() => setShowForm(true)}>+ Trupp hinzufügen</button>
@@ -1205,17 +1214,17 @@ function AtemschutzUeberwachung() {
             <div className="au-row2">
               <div className="au-field">
                 <label>Truppführer</label>
-                <input autoFocus value={form.truppfuehrer} onChange={(e) => setForm({ ...form, truppfuehrer: e.target.value })} placeholder="Name" />
+                <input autoFocus value={form.truppfuehrer} onChange={(e) => setForm({ ...form, truppfuehrer: e.target.value })} placeholder="Name" list="au-mannschaft-list" />
               </div>
               <div className="au-field">
                 <label>Truppüberwacher</label>
-                <input value={form.truppueberwacher} onChange={(e) => setForm({ ...form, truppueberwacher: e.target.value })} placeholder="Name" />
+                <input value={form.truppueberwacher} onChange={(e) => setForm({ ...form, truppueberwacher: e.target.value })} placeholder="Name" list="au-mannschaft-list" />
               </div>
             </div>
             <div className="au-row3">
-              <div className="au-field"><label>Adf 1</label><input value={form.adf1} onChange={(e) => setForm({ ...form, adf1: e.target.value })} /></div>
-              <div className="au-field"><label>Adf 2</label><input value={form.adf2} onChange={(e) => setForm({ ...form, adf2: e.target.value })} /></div>
-              <div className="au-field"><label>Adf 3</label><input value={form.adf3} onChange={(e) => setForm({ ...form, adf3: e.target.value })} /></div>
+              <div className="au-field"><label>Adf 1</label><input value={form.adf1} onChange={(e) => setForm({ ...form, adf1: e.target.value })} list="au-mannschaft-list" /></div>
+              <div className="au-field"><label>Adf 2</label><input value={form.adf2} onChange={(e) => setForm({ ...form, adf2: e.target.value })} list="au-mannschaft-list" /></div>
+              <div className="au-field"><label>Adf 3</label><input value={form.adf3} onChange={(e) => setForm({ ...form, adf3: e.target.value })} list="au-mannschaft-list" /></div>
             </div>
             <div className="au-field">
               <label>Einstiegsdruck (kleinster Druck im Trupp)</label>
@@ -1272,17 +1281,17 @@ function AtemschutzUeberwachung() {
                     <div className="au-row2">
                       <div className="au-field">
                         <label>Truppführer</label>
-                        <input value={editForm.truppfuehrer} onChange={(e) => setEditForm({ ...editForm, truppfuehrer: e.target.value })} />
+                        <input value={editForm.truppfuehrer} onChange={(e) => setEditForm({ ...editForm, truppfuehrer: e.target.value })} list="au-mannschaft-list" />
                       </div>
                       <div className="au-field">
                         <label>Truppüberwacher</label>
-                        <input value={editForm.truppueberwacher} onChange={(e) => setEditForm({ ...editForm, truppueberwacher: e.target.value })} />
+                        <input value={editForm.truppueberwacher} onChange={(e) => setEditForm({ ...editForm, truppueberwacher: e.target.value })} list="au-mannschaft-list" />
                       </div>
                     </div>
                     <div className="au-row3">
-                      <div className="au-field"><label>Adf 1</label><input value={editForm.adf1} onChange={(e) => setEditForm({ ...editForm, adf1: e.target.value })} /></div>
-                      <div className="au-field"><label>Adf 2</label><input value={editForm.adf2} onChange={(e) => setEditForm({ ...editForm, adf2: e.target.value })} /></div>
-                      <div className="au-field"><label>Adf 3</label><input value={editForm.adf3} onChange={(e) => setEditForm({ ...editForm, adf3: e.target.value })} /></div>
+                      <div className="au-field"><label>Adf 1</label><input value={editForm.adf1} onChange={(e) => setEditForm({ ...editForm, adf1: e.target.value })} list="au-mannschaft-list" /></div>
+                      <div className="au-field"><label>Adf 2</label><input value={editForm.adf2} onChange={(e) => setEditForm({ ...editForm, adf2: e.target.value })} list="au-mannschaft-list" /></div>
+                      <div className="au-field"><label>Adf 3</label><input value={editForm.adf3} onChange={(e) => setEditForm({ ...editForm, adf3: e.target.value })} list="au-mannschaft-list" /></div>
                     </div>
                     <div className="au-field">
                       <label>Einstiegsdruck</label>
@@ -1404,17 +1413,17 @@ function AtemschutzUeberwachung() {
                   <div className="au-row2">
                     <div className="au-field">
                       <label>Truppführer</label>
-                      <input value={editForm.truppfuehrer} onChange={(e) => setEditForm({ ...editForm, truppfuehrer: e.target.value })} />
+                      <input value={editForm.truppfuehrer} onChange={(e) => setEditForm({ ...editForm, truppfuehrer: e.target.value })} list="au-mannschaft-list" />
                     </div>
                     <div className="au-field">
                       <label>Truppüberwacher</label>
-                      <input value={editForm.truppueberwacher} onChange={(e) => setEditForm({ ...editForm, truppueberwacher: e.target.value })} />
+                      <input value={editForm.truppueberwacher} onChange={(e) => setEditForm({ ...editForm, truppueberwacher: e.target.value })} list="au-mannschaft-list" />
                     </div>
                   </div>
                   <div className="au-row3">
-                    <div className="au-field"><label>Adf 1</label><input value={editForm.adf1} onChange={(e) => setEditForm({ ...editForm, adf1: e.target.value })} /></div>
-                    <div className="au-field"><label>Adf 2</label><input value={editForm.adf2} onChange={(e) => setEditForm({ ...editForm, adf2: e.target.value })} /></div>
-                    <div className="au-field"><label>Adf 3</label><input value={editForm.adf3} onChange={(e) => setEditForm({ ...editForm, adf3: e.target.value })} /></div>
+                    <div className="au-field"><label>Adf 1</label><input value={editForm.adf1} onChange={(e) => setEditForm({ ...editForm, adf1: e.target.value })} list="au-mannschaft-list" /></div>
+                    <div className="au-field"><label>Adf 2</label><input value={editForm.adf2} onChange={(e) => setEditForm({ ...editForm, adf2: e.target.value })} list="au-mannschaft-list" /></div>
+                    <div className="au-field"><label>Adf 3</label><input value={editForm.adf3} onChange={(e) => setEditForm({ ...editForm, adf3: e.target.value })} list="au-mannschaft-list" /></div>
                   </div>
                   <div className="au-field">
                     <label>Einstiegsdruck</label>
@@ -1604,18 +1613,6 @@ function AtemschutzUeberwachung() {
               </div>
             </div>
 
-            <p className="au-modal-subtitle">Einsatzadresse</p>
-            <div className="au-row2">
-              <div className="au-field">
-                <label>Strasse</label>
-                <input value={settings.strasse} onChange={(e) => setSettings((s) => ({ ...s, strasse: e.target.value }))} />
-              </div>
-              <div className="au-field">
-                <label>Ort</label>
-                <input value={settings.ort} onChange={(e) => setSettings((s) => ({ ...s, ort: e.target.value }))} />
-              </div>
-            </div>
-
             {trupps.length > 0 && (
               <button
                 className="au-btn au-btn-ghost"
@@ -1662,13 +1659,31 @@ function AtemschutzUeberwachung() {
               + Dokument oder Foto hochladen
               <input type="file" accept="image/*,application/pdf" multiple onChange={handleInfoUpload} style={{ display: "none" }} />
             </label>
-            <button
-              className="au-btn au-btn-ghost"
-              style={{ width: "100%", marginBottom: 8 }}
-              onClick={() => { setShowSettings(false); setShowInfoLibrary(true); }}
-            >
-              📎 Hinterlegte Dokumente ansehen {infoDocs.length > 0 ? `(${infoDocs.length})` : ""}
-            </button>
+            {infoDocs.length > 0 && (
+              <div className="au-infolist">
+                {infoDocs.map((doc) => (
+                  <div key={doc.id} className="au-infolist-row">
+                    <span className="au-infolist-name">{doc.name}</span>
+                    <button className="au-infolist-del" onClick={() => deleteInfoDoc(doc.id)}>Löschen</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="au-modal-subtitle">Mannschaftsliste</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Namen (eine pro Zeile oder mit Komma getrennt) als .txt/.csv hochladen – erscheinen dann als Vorschläge bei Truppführer, ADF und Truppüberwacher. Manuelle Eingabe bleibt weiterhin möglich.
+            </div>
+            <label className="au-btn au-btn-primary au-upload-label">
+              + Mannschaftsliste hochladen
+              <input type="file" accept=".txt,.csv,text/plain,text/csv" onChange={handleMannschaftUpload} style={{ display: "none" }} />
+            </label>
+            {mannschaft.length > 0 && (
+              <div className="au-row-sub" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span>{mannschaft.length} Namen hinterlegt</span>
+                <button className="au-infolist-del" onClick={clearMannschaft}>Liste löschen</button>
+              </div>
+            )}
 
             <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
               Fertig
