@@ -338,7 +338,7 @@ function useBeeper() {
 // vollständig erhaltenes Protokoll (keine Archivierung/Ausblendung) mit klarem Status – abgeschlossene
 // Aufträge bleiben als "abgeschlossen" sichtbar, das laufende Segment zeigt den aktuellen Trupp-Status.
 function getAuftragSegments(tr) {
-  const closed = [...(tr.auftragsProtokolle || [])].reverse();
+  const closed = [...(tr.auftragsProtokolle || [])].reverse().map((seg) => ({ ...seg, status: seg.status || "abgeschlossen" }));
   const current = {
     auftrag: tr.auftrag,
     einsatzort: tr.einsatzort,
