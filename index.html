@@ -275,7 +275,26 @@ function TruppReport({ tr, verbrauchFallback }) {
 const STORAGE_KEY = "atemschutz:trupps";
 const SETTINGS_KEY = "atemschutz:settings";
 const EINSAETZE_KEY = "atemschutz:einsaetze";
-const DEFAULT_SETTINGS = { verbrauch: 10, abfragezeit: 10, ort: "", strasse: "" };
+const INFODOCS_KEY = "atemschutz:infodocs";
+// Richtwerte gemäss FKS CSSP CSP "Atemluft- und Sauerstoffbedarf": Verbrauch (l/min) je Belastungsstufe.
+// Der tatsächliche Verbrauch wird weiterhin laufend aus den echten Druckabfragen pro Trupp berechnet;
+// diese Werte dienen nur als Startschätzung, solange noch keine Messwerte vorliegen.
+const BELASTUNGSSTUFEN = [
+  { key: "liegen", label: "Liegen", lmin: 5 },
+  { key: "sitzen", label: "Sitzen", lmin: 8 },
+  { key: "marsch", label: "Marsch", lmin: 30 },
+  { key: "dauerbelastung", label: "Dauerbelastung", lmin: 60 },
+  { key: "starkebelastung", label: "Starke Belastung", lmin: 100 },
+];
+const DEFAULT_SETTINGS = {
+  verbrauch: 5,
+  abfragezeit: 10,
+  ort: "",
+  strasse: "",
+  flascheninhalt: 6,
+  belastungsstufe: "marsch",
+  warnSoundEnabled: true,
+};
 
 function AtemschutzUeberwachung() {
   const [screen, setScreen] = useState("start");
@@ -302,8 +321,12 @@ function AtemschutzUeberwachung() {
   const [viewingEinsatzId, setViewingEinsatzId] = useState(null);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [confirmingDeleteEinsatz, setConfirmingDeleteEinsatz] = useState(null);
+  const [infoDocs, setInfoDocs] = useState([]);
+  const [showInfoLibrary, setShowInfoLibrary] = useState(false);
+  const [viewingDocId, setViewingDocId] = useState(null);
   const beep = useBeeper();
   const lastAlarmBeep = useRef({});
+  const lastWarnBeep = useRef({});
   const dueBeepRef = useRef({});
 
   const [form, setForm] = useState({
@@ -352,6 +375,13 @@ function AtemschutzUeberwachung() {
           }
         }
       } catch (e) {}
+      try {
+        const res4 = await window.storage.get(INFODOCS_KEY, false);
+        if (res4 && res4.value) {
+          const parsed4 = JSON.parse(res4.value);
+          if (Array.isArray(parsed4)) setInfoDocs(parsed4);
+        }
+      } catch (e) {}
       setLoaded(true);
     })();
   }, []);
@@ -382,6 +412,15 @@ function AtemschutzUeberwachung() {
       } catch (e) {}
     })();
   }, [einsaetze, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        await window.storage.set(INFODOCS_KEY, JSON.stringify(infoDocs), false);
+      } catch (e) {}
+    })();
+  }, [infoDocs, loaded]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -429,6 +468,12 @@ function AtemschutzUeberwachung() {
           beep(1046, 0.25);
           lastAlarmBeep.current[tr.id] = now;
         }
+      } else if (state === "warn" && !muted[tr.id] && settings.warnSoundEnabled) {
+        const lastBeep = lastWarnBeep.current[tr.id] || 0;
+        if (now - lastBeep > 6000) {
+          beep(660, 0.2);
+          lastWarnBeep.current[tr.id] = now;
+        }
       }
       const dueKey = tr.id + "-" + last.time;
       if (secondsToNextQuery <= 0) {
@@ -439,7 +484,7 @@ function AtemschutzUeberwachung() {
         }
       }
     });
-  }, [now, trupps, muted, beep, computeTrupp]);
+  }, [now, trupps, muted, beep, computeTrupp, settings.warnSoundEnabled]);
 
   const addTrupp = () => {
     if (!form.truppfuehrer.trim()) return;
@@ -626,6 +671,25 @@ function AtemschutzUeberwachung() {
     if (viewingEinsatzId === id) setViewingEinsatzId(null);
   };
 
+  const handleInfoUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setInfoDocs((prev) => [
+          { id: nextId(), name: file.name, type: file.type || "application/octet-stream", dataUrl: reader.result, addedAt: Date.now() },
+          ...prev,
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+  const deleteInfoDoc = (id) => {
+    setInfoDocs((prev) => prev.filter((d) => d.id !== id));
+    if (viewingDocId === id) setViewingDocId(null);
+  };
+
   useEffect(() => {
     if (!printMode) return;
     const timer = setTimeout(() => window.print(), 80);
@@ -760,6 +824,57 @@ function AtemschutzUeberwachung() {
     </div>
   );
 
+  const viewingDoc = infoDocs.find((d) => d.id === viewingDocId);
+
+  const infoLibraryModal = showInfoLibrary && (
+    <div className="au-modal-backdrop" onClick={() => setShowInfoLibrary(false)}>
+      <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
+        <p className="au-modal-title">Atemschutz-Infos</p>
+        {infoDocs.length === 0 ? (
+          <div className="au-empty">
+            Noch keine Dokumente oder Fotos hinterlegt.<br />
+            Hochladen geht über <b>Optionen (⚙) → Atemschutz-Infos</b>.
+          </div>
+        ) : (
+          <div className="au-info-grid">
+            {infoDocs.map((doc) => (
+              <div key={doc.id} className="au-info-thumb" onClick={() => setViewingDocId(doc.id)}>
+                <div className="au-info-thumb-media">
+                  {doc.type.startsWith("image/") ? (
+                    <img src={doc.dataUrl} alt={doc.name} />
+                  ) : (
+                    <div className="au-info-filetile">📄</div>
+                  )}
+                </div>
+                <div className="au-info-thumb-name">{doc.name}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="au-btn au-btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => setShowInfoLibrary(false)}>
+          Schliessen
+        </button>
+      </div>
+    </div>
+  );
+
+  const infoDocViewerModal = viewingDoc && (
+    <div className="au-modal-backdrop" style={{ zIndex: 70 }} onClick={() => setViewingDocId(null)}>
+      <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
+        <p className="au-modal-title">{viewingDoc.name}</p>
+        {viewingDoc.type.startsWith("image/") ? (
+          <img src={viewingDoc.dataUrl} alt={viewingDoc.name} style={{ width: "100%", borderRadius: 10 }} />
+        ) : (
+          <iframe title={viewingDoc.name} src={viewingDoc.dataUrl} style={{ width: "100%", height: 420, border: "1px solid #E4E7EB", borderRadius: 10 }} />
+        )}
+        <div className="au-formbtns" style={{ marginTop: 12 }}>
+          <button className="au-btn au-btn-ghost" onClick={() => deleteInfoDoc(viewingDoc.id)}>Löschen</button>
+          <button className="au-btn au-btn-primary" onClick={() => setViewingDocId(null)}>Schliessen</button>
+        </div>
+      </div>
+    </div>
+  );
+
   const styleBlock = (
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
@@ -810,6 +925,7 @@ function AtemschutzUeberwachung() {
       .au-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }
       .au-field label { font-size: 11px; letter-spacing: 0.04em; color: #6B7280; }
       .au-field input { background: #F9FAFB; border: 1px solid #E4E7EB; border-radius: 8px; padding: 10px 12px; color: #1A1D21; font-family: 'Inter', sans-serif; font-size: 15px; width: 100%; }
+      .au-field select { background: #F9FAFB; border: 1px solid #E4E7EB; border-radius: 8px; padding: 10px 12px; color: #1A1D21; font-family: 'Inter', sans-serif; font-size: 14px; width: 100%; }
       .au-field input:focus { outline: 2px solid #3E8E41; outline-offset: 1px; }
       .au-row2 { display: flex; gap: 10px; }
       .au-row2 .au-field { flex: 1; }
@@ -825,10 +941,21 @@ function AtemschutzUeberwachung() {
       .au-modal { background: #fff; width: 100%; max-width: 480px; border-radius: 18px 18px 0 0; padding: 20px; }
       .au-modal-title { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 14px; }
       .au-modal-subtitle { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #6B7280; margin: 18px 0 10px; }
+      .au-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1A1D21; margin: 4px 0 14px; }
+      .au-checkbox-row input { width: 18px; height: 18px; }
+      .au-upload-label { display: block; width: 100%; text-align: center; margin-bottom: 10px; cursor: pointer; }
+      .au-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .au-info-thumb { border-radius: 10px; overflow: hidden; background: #F3F4F6; border: 1px solid #E4E7EB; cursor: pointer; display: flex; flex-direction: column; }
+      .au-info-thumb-media { aspect-ratio: 1; width: 100%; display: flex; align-items: center; justify-content: center; background: #EEF0F2; overflow: hidden; }
+      .au-info-thumb-media img { width: 100%; height: 100%; object-fit: cover; }
+      .au-info-filetile { font-size: 26px; }
+      .au-info-thumb-name { font-size: 10px; color: #4B5563; padding: 5px 6px; text-align: center; word-break: break-word; line-height: 1.25; background: #fff; }
 
       /* ---- card ---- */
       .au-card { background: #fff; border-radius: 16px; margin-bottom: 14px; overflow: hidden; border: 1px solid #E4E7EB; box-shadow: 0 1px 3px rgba(20,22,26,0.04); }
       .au-card.alarm { border-color: #D9483D; animation: au-pulse 1.2s ease-in-out infinite; }
+      .au-card.warn { border-color: #E8912D; animation: au-pulse-warn 1.2s ease-in-out infinite; }
+      @keyframes au-pulse-warn { 0%, 100% { background: #fff; } 50% { background: #FCF1E1; } }
       .au-alert-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 60; animation: au-alert-blink 1s steps(1) infinite; }
       .au-alert-overlay.warn { background: rgba(232, 145, 45, 0.28); }
       .au-alert-overlay.alarm { background: rgba(217, 72, 61, 0.32); }
@@ -963,8 +1090,13 @@ function AtemschutzUeberwachung() {
               📁 Vergangene Einsätze ({einsaetze.length})
             </button>
           )}
+          <button className="au-start-resume" onClick={() => setShowInfoLibrary(true)}>
+            📎 Atemschutz-Infos {infoDocs.length > 0 ? `(${infoDocs.length})` : ""}
+          </button>
           <div className="au-start-clock">{fmtClock(new Date(now))}</div>
         </div>
+        {infoLibraryModal}
+        {infoDocViewerModal}
       </div>
     );
   }
@@ -1040,6 +1172,8 @@ function AtemschutzUeberwachung() {
         </div>
         {viewingModal}
         {printOnlyBlock}
+        {infoLibraryModal}
+        {infoDocViewerModal}
       </div>
     );
   }
@@ -1054,7 +1188,10 @@ function AtemschutzUeberwachung() {
           <h1 className="au-title">Atemschutz­überwachung</h1>
           <div className="au-count">{activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} im Einsatz · {fmtClock(new Date(now))}</div>
         </div>
-        <button className="au-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="au-gear" onClick={() => setShowInfoLibrary(true)} aria-label="Atemschutz-Infos">📎</button>
+          <button className="au-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
+        </div>
       </div>
 
       <div className="au-body">
@@ -1191,7 +1328,7 @@ function AtemschutzUeberwachung() {
           const msgsOpen = expandedMsgs[tr.id];
 
           return (
-            <div key={tr.id} className={`au-card ${state === "alarm" ? "alarm" : ""}`}>
+            <div key={tr.id} className={`au-card ${state === "alarm" ? "alarm" : state === "warn" ? "warn" : ""}`}>
               <div className="au-gaugewrap">
                 <PressureGauge value={remaining} max={tr.einstiegsdruck} rueckzugsdruck={rueckzugsdruck} />
                 <div className={`au-gauge-value ${state}`}>{Math.round(remaining)}</div>
@@ -1349,7 +1486,7 @@ function AtemschutzUeberwachung() {
                 {editingId !== tr.id && (
                   <button className="au-chip" onClick={() => startEdit(tr)}>✎ Bearbeiten</button>
                 )}
-                {state === "alarm" && (
+                {(state === "alarm" || state === "warn") && (
                   <button className="au-chip mute" onClick={() => toggleMute(tr.id)}>{muted[tr.id] ? "Ton an" : "Stumm"}</button>
                 )}
               </div>
@@ -1384,6 +1521,48 @@ function AtemschutzUeberwachung() {
         <div className="au-modal-backdrop" onClick={() => setShowSettings(false)}>
           <div className="au-modal" onClick={(e) => e.stopPropagation()}>
             <p className="au-modal-title">Optionen</p>
+
+            <p className="au-modal-subtitle">Luftverbrauch berechnen (FKS-Richtwerte)</p>
+            <div className="au-row2">
+              <div className="au-field">
+                <label>Flascheninhalt (Liter)</label>
+                <input
+                  type="number"
+                  value={settings.flascheninhalt}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 1;
+                    setSettings((s) => {
+                      const stufe = BELASTUNGSSTUFEN.find((b) => b.key === s.belastungsstufe);
+                      return { ...s, flascheninhalt: val, verbrauch: stufe ? Number((stufe.lmin / val).toFixed(1)) : s.verbrauch };
+                    });
+                  }}
+                />
+              </div>
+              <div className="au-field">
+                <label>Belastungsstufe</label>
+                <select
+                  value={settings.belastungsstufe}
+                  onChange={(e) => {
+                    const stufe = BELASTUNGSSTUFEN.find((b) => b.key === e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      belastungsstufe: e.target.value,
+                      verbrauch: stufe ? Number((stufe.lmin / (s.flascheninhalt || 6)).toFixed(1)) : s.verbrauch,
+                    }));
+                  }}
+                >
+                  {BELASTUNGSSTUFEN.map((b) => (
+                    <option key={b.key} value={b.key}>{b.label} (~{b.lmin} l/min)</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="au-row-sub" style={{ marginBottom: 10 }}>
+              Ergibt ca. {(
+                (BELASTUNGSSTUFEN.find((b) => b.key === settings.belastungsstufe)?.lmin || 0) / (settings.flascheninhalt || 6)
+              ).toFixed(1)} bar/min als Startschätzung. Der tatsächliche Verbrauch wird laufend aus den Druckabfragen pro Trupp neu berechnet.
+            </div>
+
             <div className="au-field">
               <label>Luftverbrauch – Standardwert (bar/min)</label>
               <input
@@ -1395,6 +1574,15 @@ function AtemschutzUeberwachung() {
                 Wird nur verwendet, bis genug Druckabfragen für eine Berechnung pro Trupp vorliegen.
               </div>
             </div>
+
+            <label className="au-checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.warnSoundEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, warnSoundEnabled: e.target.checked }))}
+              />
+              Ton bei Erreichen des Rückzugsdrucks
+            </label>
             <div className="au-field">
               <label>Abfragezeit</label>
               <div className="au-slider-value">{settings.abfragezeit} min</div>
@@ -1469,6 +1657,19 @@ function AtemschutzUeberwachung() {
               </button>
             )}
 
+            <p className="au-modal-subtitle">Atemschutz-Infos</p>
+            <label className="au-btn au-btn-primary au-upload-label">
+              + Dokument oder Foto hochladen
+              <input type="file" accept="image/*,application/pdf" multiple onChange={handleInfoUpload} style={{ display: "none" }} />
+            </label>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8 }}
+              onClick={() => { setShowSettings(false); setShowInfoLibrary(true); }}
+            >
+              📎 Hinterlegte Dokumente ansehen {infoDocs.length > 0 ? `(${infoDocs.length})` : ""}
+            </button>
+
             <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
               Fertig
             </button>
@@ -1502,6 +1703,8 @@ function AtemschutzUeberwachung() {
 
       {viewingModal}
       {printOnlyBlock}
+      {infoLibraryModal}
+      {infoDocViewerModal}
     </div>
   );
 }
