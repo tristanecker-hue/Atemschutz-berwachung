@@ -340,14 +340,37 @@ function useBeeper() {
 function getAuftragSegments(tr) {
   const closed = [...(tr.auftragsProtokolle || [])].reverse().map((seg) => ({ ...seg, status: seg.status || "abgeschlossen" }));
   const current = {
+    truppfuehrer: tr.truppfuehrer,
+    truppueberwacher: tr.truppueberwacher,
+    adf1: tr.adf1,
+    adf2: tr.adf2,
+    adf3: tr.adf3,
+    einstiegsdruck: tr.einstiegsdruck,
+    strasse: tr.strasse,
+    ort: tr.ort,
+    funkkanal: tr.funkkanal,
+    seilfarbe: tr.seilfarbe,
     auftrag: tr.auftrag,
     einsatzort: tr.einsatzort,
     startTime: tr.startTime,
     endTime: tr.endTime,
+    zielErreichtTime: tr.zielErreichtTime,
     pressureLog: tr.pressureLog || [],
     status: tr.status === "done" ? "abgeschlossen" : tr.status === "bereit" ? "bereit" : "aktiv",
   };
   return [...closed, current];
+}
+
+// Berechnet Luftverbrauch/Rückzugsdruck/Dauer eigenständig für EIN Auftrags-Protokoll (nicht für den
+// ganzen Trupp) – jeder Auftrag bekommt so seine eigene, unabhängige Berechnung.
+function getSegmentStats(seg, verbrauchFallback) {
+  const verbrauch = truppVerbrauch({ pressureLog: seg.pressureLog }, verbrauchFallback);
+  const effectiveAnmarschzeit = seg.zielErreichtTime && seg.startTime ? (seg.zielErreichtTime - seg.startTime) / 60000 : 0;
+  const rueckzugsdruck = Math.max(50, effectiveAnmarschzeit * verbrauch * 1.1);
+  const endRef = seg.endTime || Date.now();
+  const durationMs = seg.startTime ? endRef - seg.startTime : 0;
+  const members = [seg.adf1, seg.adf2, seg.adf3].filter(Boolean);
+  return { verbrauch, rueckzugsdruck, durationMs, members };
 }
 
 function getTruppReportData(tr, verbrauchFallback) {
@@ -366,63 +389,67 @@ function getTruppReportData(tr, verbrauchFallback) {
 
 // ---------- printable / on-screen report for a single Trupp ----------
 function TruppReport({ tr, verbrauchFallback }) {
-  const { chronological, verbrauch, rueckzugsdruck, durationMs, members, statusLabel } = getTruppReportData(tr, verbrauchFallback);
+  const segments = getAuftragSegments(tr);
 
   return (
     <div className="au-report">
-      <div className="au-report-head">
-        <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
-        <div style={{ flex: 1 }}>
-          <div className="au-report-title">{tr.truppfuehrer || "Trupp"}</div>
-          {(tr.strasse || tr.ort) && <div className="au-report-einsatzort">{[tr.strasse, tr.ort].filter(Boolean).join(", ")}</div>}
-          {tr.einsatzort && <div className="au-report-einsatzort">{tr.einsatzort}</div>}
-        </div>
-        <div className="au-report-status">{statusLabel}</div>
-      </div>
-      {members.length > 0 && <div className="au-report-sub">Mitglieder: {members.join(", ")}</div>}
-      {tr.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {tr.truppueberwacher}</div>}
-      <table className="au-report-table">
-        <tbody>
-          <tr><td>Strasse</td><td>{tr.strasse || "–"}</td></tr>
-          <tr><td>Ort</td><td>{tr.ort || "–"}</td></tr>
-          <tr><td>Einsatzort</td><td>{tr.einsatzort || "–"}</td></tr>
-          <tr><td>Auftrag</td><td>{tr.auftrag || "–"}</td></tr>
-          <tr><td>Funkkanal</td><td>{tr.funkkanal || "–"}</td></tr>
-          <tr><td>Seilfarbe</td><td>{tr.seilfarbe || "–"}</td></tr>
-          <tr><td>Einstiegsdruck</td><td>{tr.einstiegsdruck} bar</td></tr>
-          {tr.zielErreichtTime && (
-            <tr><td>Einsatzziel erreicht</td><td>nach {((tr.zielErreichtTime - tr.startTime) / 60000).toFixed(1)} min</td></tr>
-          )}
-          <tr><td>Rückzugsdruck (berechnet)</td><td>{Math.round(rueckzugsdruck)} bar</td></tr>
-          <tr><td>Luftverbrauch (berechnet)</td><td>{verbrauch.toFixed(1)} bar/min</td></tr>
-          {tr.startTime && <tr><td>Start</td><td>{new Date(tr.startTime).toLocaleString("de-DE")}</td></tr>}
-          {tr.endTime && <tr><td>Ende</td><td>{new Date(tr.endTime).toLocaleString("de-DE")}</td></tr>}
-          <tr><td>Gesamtdauer</td><td>{fmtElapsedShort(durationMs)}</td></tr>
-        </tbody>
-      </table>
-      <div className="au-report-subtitle">Druckabfragen</div>
-      {getAuftragSegments(tr).map((seg, i) => (
-        <div key={i} className="au-report-segment-break" style={{ marginBottom: 10 }}>
-          <div className="au-report-segment-title">
-            Protokoll {getAuftragSegments(tr).length > 1 ? `${i + 1}/${getAuftragSegments(tr).length} · ` : ""}
-            Auftrag: {seg.auftrag || "–"}{seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: {seg.status}
+      {segments.map((seg, i) => {
+        const stats = getSegmentStats(seg, verbrauchFallback);
+        const chronological = [...(seg.pressureLog || [])].reverse();
+        const segLabel = segments.length > 1 ? `Auftrag ${i + 1}/${segments.length}` : null;
+        return (
+          <div key={i} className={i > 0 ? "au-report-segment-break" : ""}>
+            <div className="au-report-head">
+              <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
+              <div style={{ flex: 1 }}>
+                <div className="au-report-title">{seg.truppfuehrer || "Trupp"}</div>
+                {(seg.strasse || seg.ort) && <div className="au-report-einsatzort">{[seg.strasse, seg.ort].filter(Boolean).join(", ")}</div>}
+                {seg.einsatzort && <div className="au-report-einsatzort">{seg.einsatzort}</div>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                {segLabel && <div className="au-report-segkicker">{segLabel}</div>}
+                <div className="au-report-status">{seg.status}</div>
+              </div>
+            </div>
+            {stats.members.length > 0 && <div className="au-report-sub">Mitglieder: {stats.members.join(", ")}</div>}
+            {seg.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {seg.truppueberwacher}</div>}
+            <table className="au-report-table">
+              <tbody>
+                <tr><td>Strasse</td><td>{seg.strasse || "–"}</td></tr>
+                <tr><td>Ort</td><td>{seg.ort || "–"}</td></tr>
+                <tr><td>Einsatzort</td><td>{seg.einsatzort || "–"}</td></tr>
+                <tr><td>Auftrag</td><td>{seg.auftrag || "–"}</td></tr>
+                <tr><td>Funkkanal</td><td>{seg.funkkanal || "–"}</td></tr>
+                <tr><td>Seilfarbe</td><td>{seg.seilfarbe || "–"}</td></tr>
+                <tr><td>Einstiegsdruck</td><td>{seg.einstiegsdruck} bar</td></tr>
+                {seg.zielErreichtTime && seg.startTime && (
+                  <tr><td>Einsatzziel erreicht</td><td>nach {((seg.zielErreichtTime - seg.startTime) / 60000).toFixed(1)} min</td></tr>
+                )}
+                <tr><td>Rückzugsdruck (berechnet)</td><td>{Math.round(stats.rueckzugsdruck)} bar</td></tr>
+                <tr><td>Luftverbrauch (berechnet)</td><td>{stats.verbrauch.toFixed(1)} bar/min</td></tr>
+                {seg.startTime && <tr><td>Start</td><td>{new Date(seg.startTime).toLocaleString("de-DE")}</td></tr>}
+                {seg.endTime && <tr><td>Ende</td><td>{new Date(seg.endTime).toLocaleString("de-DE")}</td></tr>}
+                <tr><td>Gesamtdauer</td><td>{fmtElapsedShort(stats.durationMs)}</td></tr>
+              </tbody>
+            </table>
+            <div className="au-report-subtitle">Druckabfragen</div>
+            <table className="au-report-table au-report-log">
+              <thead>
+                <tr><th>Zeit</th><th>Druck</th><th>Meldung</th></tr>
+              </thead>
+              <tbody>
+                {chronological.map((e, j) => (
+                  <tr key={j}>
+                    <td>{new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</td>
+                    <td>{e.pressure != null ? `${e.pressure} bar` : "–"}</td>
+                    <td>{e.message || "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <table className="au-report-table au-report-log">
-            <thead>
-              <tr><th>Zeit</th><th>Druck</th><th>Meldung</th></tr>
-            </thead>
-            <tbody>
-              {[...(seg.pressureLog || [])].reverse().map((e, j) => (
-                <tr key={j}>
-                  <td>{new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</td>
-                  <td>{e.pressure != null ? `${e.pressure} bar` : "–"}</td>
-                  <td>{e.message || "–"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -492,8 +519,7 @@ function AtemschutzUeberwachung() {
   const [choosingEndActionId, setChoosingEndActionId] = useState(null);
   const [confirmingFlaschenwechselId, setConfirmingFlaschenwechselId] = useState(null);
   const [flaschenwechselNeuerAuftrag, setFlaschenwechselNeuerAuftrag] = useState(null);
-  const [neuerAuftragText, setNeuerAuftragText] = useState("");
-  const [neuerEinsatzortText, setNeuerEinsatzortText] = useState("");
+  const [neuerAuftragForm, setNeuerAuftragForm] = useState(null);
   const [flaschenwechselPressureInput, setFlaschenwechselPressureInput] = useState("");
   const [endPressureInput, setEndPressureInput] = useState("");
   const [editingEntry, setEditingEntry] = useState(null);
@@ -785,10 +811,21 @@ function AtemschutzUeberwachung() {
         const finalReading = { time: now, pressure: tiefsterDruck, message: "Flaschenwechsel" };
         if (isNeuerAuftrag) {
           const closedSegment = {
+            truppfuehrer: t.truppfuehrer,
+            truppueberwacher: t.truppueberwacher,
+            adf1: t.adf1,
+            adf2: t.adf2,
+            adf3: t.adf3,
+            einstiegsdruck: t.einstiegsdruck,
+            strasse: t.strasse,
+            ort: t.ort,
+            funkkanal: t.funkkanal,
+            seilfarbe: t.seilfarbe,
             auftrag: t.auftrag,
             einsatzort: t.einsatzort,
             startTime: t.startTime,
             endTime: now,
+            zielErreichtTime: t.zielErreichtTime,
             pressureLog: [finalReading, ...(t.pressureLog || [])],
             status: "abgeschlossen",
           };
@@ -797,8 +834,18 @@ function AtemschutzUeberwachung() {
             status: "bereit",
             startTime: null,
             zielErreichtTime: null,
-            auftrag: neuerAuftragText.trim(),
-            einsatzort: neuerEinsatzortText.trim(),
+            truppfuehrer: neuerAuftragForm.truppfuehrer.trim(),
+            truppueberwacher: neuerAuftragForm.truppueberwacher.trim(),
+            adf1: neuerAuftragForm.adf1.trim(),
+            adf2: neuerAuftragForm.adf2.trim(),
+            adf3: neuerAuftragForm.adf3.trim(),
+            einstiegsdruck: Number(neuerAuftragForm.einstiegsdruck) || t.einstiegsdruck,
+            strasse: neuerAuftragForm.strasse.trim(),
+            ort: neuerAuftragForm.ort.trim(),
+            funkkanal: neuerAuftragForm.funkkanal.trim(),
+            seilfarbe: neuerAuftragForm.seilfarbe.trim(),
+            auftrag: neuerAuftragForm.auftrag.trim(),
+            einsatzort: neuerAuftragForm.einsatzort.trim(),
             pressureLog: [],
             auftragsProtokolle: [closedSegment, ...(t.auftragsProtokolle || [])],
           };
@@ -814,8 +861,7 @@ function AtemschutzUeberwachung() {
     );
     setConfirmingFlaschenwechselId(null);
     setFlaschenwechselNeuerAuftrag(null);
-    setNeuerAuftragText("");
-    setNeuerEinsatzortText("");
+    setNeuerAuftragForm(null);
     setFlaschenwechselPressureInput("");
   };
 
@@ -1111,68 +1157,56 @@ function AtemschutzUeberwachung() {
   // Builds one Trupp's data into a jsPDF document (used only when jsPDF is available, i.e. the
   // standalone GitHub-hosted build; the Claude-preview build falls back to the print dialog below).
   const renderTruppIntoPdf = (doc, tr, isFirst) => {
-    if (!isFirst) doc.addPage();
-    const { chronological, verbrauch, rueckzugsdruck, durationMs, members, statusLabel } = getTruppReportData(tr, settings.verbrauch);
-    try { doc.addImage(LOGO_SRC, "JPEG", 14, 10, 16, 16); } catch (e) {}
-    doc.setFont(undefined, "bold");
-    doc.setFontSize(15);
-    doc.text(tr.truppfuehrer || "Trupp", 34, 17);
-    doc.setFont(undefined, "normal");
-    doc.setFontSize(10);
-    if (tr.einsatzort) doc.text(tr.einsatzort, 34, 23);
-    doc.setFontSize(9);
-    doc.text(statusLabel, 196, 15, { align: "right" });
-    doc.setDrawColor(20, 20, 20);
-    doc.line(14, 30, 196, 30);
-
-    const infoRows = [
-      ["Strasse", tr.strasse || "–"],
-      ["Ort", tr.ort || "–"],
-      ["Einsatzort", tr.einsatzort || "–"],
-      ["Mitglieder", members.join(", ") || "–"],
-      ["Truppüberwacher", tr.truppueberwacher || "–"],
-      ["Auftrag", tr.auftrag || "–"],
-      ["Funkkanal", tr.funkkanal || "–"],
-      ["Seilfarbe", tr.seilfarbe || "–"],
-      ["Einstiegsdruck", `${tr.einstiegsdruck} bar`],
-      ...(tr.zielErreichtTime ? [["Einsatzziel erreicht", `nach ${((tr.zielErreichtTime - tr.startTime) / 60000).toFixed(1)} min`]] : []),
-      ["Rückzugsdruck (berechnet)", `${Math.round(rueckzugsdruck)} bar`],
-      ["Luftverbrauch (berechnet)", `${verbrauch.toFixed(1)} bar/min`],
-      ...(tr.startTime ? [["Start", new Date(tr.startTime).toLocaleString("de-DE")]] : []),
-      ...(tr.endTime ? [["Ende", new Date(tr.endTime).toLocaleString("de-DE")]] : []),
-      ["Gesamtdauer", fmtElapsedShort(durationMs)],
-    ];
-    doc.autoTable({ startY: 35, body: infoRows, theme: "grid", styles: { fontSize: 9 } });
-
     const segments = getAuftragSegments(tr);
-    let cursorY = doc.lastAutoTable.finalY + 8;
     segments.forEach((seg, i) => {
-      // Jeder Auftrag bekommt eine eigene Seite, damit sich die Protokolle klar trennen lassen.
-      // Jedes Protokoll (auch das erste) bekommt eine eigene Seite – Kopf/Übersicht bleibt allein auf Seite 1.
-      doc.addPage();
-      cursorY = 20;
-      doc.setFontSize(10);
+      if (!isFirst || i > 0) doc.addPage();
+      const stats = getSegmentStats(seg, settings.verbrauch);
+      const segLabel = segments.length > 1 ? ` (Auftrag ${i + 1}/${segments.length})` : "";
+
+      try { doc.addImage(LOGO_SRC, "JPEG", 14, 10, 16, 16); } catch (e) {}
       doc.setFont(undefined, "bold");
-      doc.text(
-        `Protokoll${segments.length > 1 ? ` ${i + 1}/${segments.length}` : ""} – Auftrag: ${seg.auftrag || "–"}${seg.einsatzort ? ` (${seg.einsatzort})` : ""} · Status: ${seg.status}`,
-        14,
-        cursorY
-      );
+      doc.setFontSize(15);
+      doc.text(seg.truppfuehrer || "Trupp", 34, 17);
       doc.setFont(undefined, "normal");
+      doc.setFontSize(10);
+      if (seg.einsatzort) doc.text(seg.einsatzort, 34, 23);
+      doc.setFontSize(9);
+      doc.text(`${seg.status}${segLabel}`, 196, 15, { align: "right" });
+      doc.setDrawColor(20, 20, 20);
+      doc.line(14, 30, 196, 30);
+
+      const infoRows = [
+        ["Strasse", seg.strasse || "–"],
+        ["Ort", seg.ort || "–"],
+        ["Einsatzort", seg.einsatzort || "–"],
+        ["Mitglieder", stats.members.join(", ") || "–"],
+        ["Truppüberwacher", seg.truppueberwacher || "–"],
+        ["Auftrag", seg.auftrag || "–"],
+        ["Funkkanal", seg.funkkanal || "–"],
+        ["Seilfarbe", seg.seilfarbe || "–"],
+        ["Einstiegsdruck", `${seg.einstiegsdruck} bar`],
+        ...(seg.zielErreichtTime && seg.startTime ? [["Einsatzziel erreicht", `nach ${((seg.zielErreichtTime - seg.startTime) / 60000).toFixed(1)} min`]] : []),
+        ["Rückzugsdruck (berechnet)", `${Math.round(stats.rueckzugsdruck)} bar`],
+        ["Luftverbrauch (berechnet)", `${stats.verbrauch.toFixed(1)} bar/min`],
+        ...(seg.startTime ? [["Start", new Date(seg.startTime).toLocaleString("de-DE")]] : []),
+        ...(seg.endTime ? [["Ende", new Date(seg.endTime).toLocaleString("de-DE")]] : []),
+        ["Gesamtdauer", fmtElapsedShort(stats.durationMs)],
+      ];
+      doc.autoTable({ startY: 35, body: infoRows, theme: "grid", styles: { fontSize: 9 } });
+
       const logRows = [...(seg.pressureLog || [])].reverse().map((e) => [
         new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
         e.pressure != null ? `${e.pressure} bar` : "–",
         e.message || "–",
       ]);
       doc.autoTable({
-        startY: cursorY + 3,
+        startY: doc.lastAutoTable.finalY + 8,
         head: [["Zeit", "Druck", "Meldung"]],
         body: logRows,
         theme: "grid",
         styles: { fontSize: 8 },
         headStyles: { fillColor: [30, 33, 39] },
       });
-      cursorY = doc.lastAutoTable.finalY + 10;
     });
   };
 
@@ -1685,6 +1719,7 @@ function AtemschutzUeberwachung() {
       .au-report-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 20px; text-transform: uppercase; }
       .au-report-einsatzort { font-size: 14px; color: #333; font-weight: 600; margin-top: 2px; }
       .au-report-status { font-size: 13px; color: #444; flex-shrink: 0; }
+      .au-report-segkicker { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 2px; }
       .au-report-sub { font-size: 13px; color: #444; margin-bottom: 10px; }
       .au-report-subtitle { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; text-transform: uppercase; margin: 14px 0 6px; }
       .au-report-segment-title { font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; }
@@ -2255,11 +2290,28 @@ function AtemschutzUeberwachung() {
                 className="au-btn au-btn-ghost"
                 onClick={() => {
                   const id = choosingEndActionId;
+                  const tr = trupps.find((t) => t.id === id);
                   setChoosingEndActionId(null);
                   setConfirmingFlaschenwechselId(id);
                   setFlaschenwechselNeuerAuftrag(null);
-                  setNeuerAuftragText("");
-                  setNeuerEinsatzortText("");
+                  setNeuerAuftragForm(
+                    tr
+                      ? {
+                          truppfuehrer: tr.truppfuehrer || "",
+                          truppueberwacher: tr.truppueberwacher || "",
+                          adf1: tr.adf1 || "",
+                          adf2: tr.adf2 || "",
+                          adf3: tr.adf3 || "",
+                          einstiegsdruck: tr.einstiegsdruck || 300,
+                          strasse: tr.strasse || "",
+                          ort: tr.ort || "",
+                          funkkanal: tr.funkkanal || "",
+                          seilfarbe: tr.seilfarbe || "",
+                          auftrag: "",
+                          einsatzort: "",
+                        }
+                      : null
+                  );
                   setFlaschenwechselPressureInput("");
                 }}
               >
@@ -2349,23 +2401,95 @@ function AtemschutzUeberwachung() {
               </button>
             </div>
 
-            {flaschenwechselNeuerAuftrag === true && (
+            {flaschenwechselNeuerAuftrag === true && neuerAuftragForm && (
               <>
+                <p className="au-modal-subtitle">Truppdetails für den neuen Auftrag</p>
+                <div className="au-row2">
+                  <div className="au-field">
+                    <label>Truppführer</label>
+                    <input
+                      value={neuerAuftragForm.truppfuehrer}
+                      onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, truppfuehrer: e.target.value }))}
+                      list="au-mannschaft-list"
+                    />
+                  </div>
+                  <div className="au-field">
+                    <label>Truppüberwacher</label>
+                    <input
+                      value={neuerAuftragForm.truppueberwacher}
+                      onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, truppueberwacher: e.target.value }))}
+                      list="au-mannschaft-list"
+                    />
+                  </div>
+                </div>
+                <div className="au-row3">
+                  <div className="au-field">
+                    <label>Adf 1</label>
+                    <input value={neuerAuftragForm.adf1} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, adf1: e.target.value }))} list="au-mannschaft-list" />
+                  </div>
+                  <div className="au-field">
+                    <label>Adf 2</label>
+                    <input value={neuerAuftragForm.adf2} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, adf2: e.target.value }))} list="au-mannschaft-list" />
+                  </div>
+                  <div className="au-field">
+                    <label>Adf 3</label>
+                    <input value={neuerAuftragForm.adf3} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, adf3: e.target.value }))} list="au-mannschaft-list" />
+                  </div>
+                </div>
+                <div className="au-field">
+                  <label>Einstiegsdruck (neue Flasche)</label>
+                  <input
+                    type="number"
+                    value={neuerAuftragForm.einstiegsdruck}
+                    onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, einstiegsdruck: e.target.value }))}
+                  />
+                </div>
+                <div className="au-address-row">
+                  <div className="au-field">
+                    <label>Strasse, Nr.</label>
+                    <input
+                      value={neuerAuftragForm.strasse}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNeuerAuftragForm((f) => ({ ...f, strasse: val, ort: !f.ort && ZUCHWIL_STRASSEN.includes(val) ? "4528 Zuchwil" : f.ort }));
+                      }}
+                      list="au-strassen-list"
+                    />
+                  </div>
+                  <div className="au-field" style={{ maxWidth: 140 }}>
+                    <label>Ort</label>
+                    <input value={neuerAuftragForm.ort} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, ort: e.target.value }))} />
+                  </div>
+                </div>
                 <div className="au-field">
                   <label>Neuer Einsatzort</label>
                   <input
-                    value={neuerEinsatzortText}
-                    onChange={(e) => setNeuerEinsatzortText(e.target.value)}
+                    autoFocus
+                    value={neuerAuftragForm.einsatzort}
+                    onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, einsatzort: e.target.value }))}
                     placeholder="z. B. 2. Stock"
                   />
                 </div>
                 <div className="au-field">
                   <label>Neuer Auftrag</label>
                   <input
-                    value={neuerAuftragText}
-                    onChange={(e) => setNeuerAuftragText(e.target.value)}
+                    value={neuerAuftragForm.auftrag}
+                    onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, auftrag: e.target.value }))}
                     placeholder="z. B. Brandbekämpfung"
                   />
+                </div>
+                <div className="au-row2">
+                  <div className="au-field">
+                    <label>Funkkanal</label>
+                    <input value={neuerAuftragForm.funkkanal} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, funkkanal: e.target.value }))} />
+                  </div>
+                  <div className="au-field">
+                    <label>Seilfarbe</label>
+                    <input value={neuerAuftragForm.seilfarbe} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, seilfarbe: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="au-row-sub" style={{ marginBottom: 8 }}>
+                  Luftverbrauch und Rückzugsdruck werden für diesen Auftrag komplett neu berechnet, sobald Druckabfragen vorliegen.
                 </div>
               </>
             )}
@@ -2378,7 +2502,8 @@ function AtemschutzUeberwachung() {
                   !flaschenwechselPressureInput.trim() ||
                   Number.isNaN(Number(flaschenwechselPressureInput)) ||
                   flaschenwechselNeuerAuftrag === null ||
-                  (flaschenwechselNeuerAuftrag === true && (!neuerAuftragText.trim() || !neuerEinsatzortText.trim()))
+                  (flaschenwechselNeuerAuftrag === true &&
+                    (!neuerAuftragForm || !neuerAuftragForm.auftrag.trim() || !neuerAuftragForm.einsatzort.trim() || !neuerAuftragForm.truppfuehrer.trim()))
                 }
                 onClick={() => confirmFlaschenwechsel(confirmingFlaschenwechselId)}
               >
