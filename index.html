@@ -510,6 +510,10 @@ function AtemschutzUeberwachung() {
   const [showForm, setShowForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdminPasswordPrompt, setShowAdminPasswordPrompt] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [adminPasswordError, setAdminPasswordError] = useState("");
+  const ADMIN_PASSWORD = "4528";
   const [loaded, setLoaded] = useState(false);
   const [muted, setMuted] = useState({});
   const [pressureInputs, setPressureInputs] = useState({});
@@ -1576,6 +1580,7 @@ function AtemschutzUeberwachung() {
       /* ---- start screen (dark splash) ---- */
       .au-start-root { min-height: 100vh; background: #12151A; color: #F5F6F7; position: relative; }
       .au-start-icons { position: absolute; top: 18px; right: 18px; z-index: 5; display: flex; gap: 8px; }
+      .au-start-admin-wrap { position: absolute; top: 18px; left: 18px; z-index: 5; }
       .au-start-gear { background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; }
       .au-start-clock-big { font-family: 'IBM Plex Mono', 'Inter', monospace; font-size: 30px; font-weight: 600; color: #E8ECEF; margin-bottom: 18px; letter-spacing: 0.02em; }
       .au-start { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
@@ -1756,8 +1761,16 @@ function AtemschutzUeberwachung() {
     return (
       <div className="au-app au-start-root">
         {styleBlock}
+        <div className="au-start-admin-wrap">
+          <button
+            className="au-start-gear"
+            onClick={() => { setShowAdminPasswordPrompt(true); setAdminPasswordInput(""); setAdminPasswordError(""); }}
+            aria-label="Admin"
+          >
+            🛠
+          </button>
+        </div>
         <div className="au-start-icons">
-          <button className="au-start-gear" onClick={() => setShowAdmin(true)} aria-label="Admin">🛠</button>
           <button className="au-start-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
         </div>
         <div className="au-start">
@@ -1779,6 +1792,50 @@ function AtemschutzUeberwachung() {
         {infoDocViewerModal}
         {settingsModal}
         {adminModal}
+        {showAdminPasswordPrompt && (
+          <div className="au-modal-backdrop" onClick={() => setShowAdminPasswordPrompt(false)}>
+            <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+              <p className="au-modal-title">Admin-Bereich</p>
+              <div className="au-field">
+                <label>Passwort</label>
+                <input
+                  autoFocus
+                  type="password"
+                  inputMode="numeric"
+                  value={adminPasswordInput}
+                  onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(""); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (adminPasswordInput === ADMIN_PASSWORD) {
+                        setShowAdminPasswordPrompt(false);
+                        setShowAdmin(true);
+                      } else {
+                        setAdminPasswordError("Falsches Passwort.");
+                      }
+                    }
+                  }}
+                />
+                {adminPasswordError && <div className="au-row-sub" style={{ color: "#D9483D", marginTop: 4 }}>{adminPasswordError}</div>}
+              </div>
+              <div className="au-formbtns">
+                <button className="au-btn au-btn-ghost" onClick={() => setShowAdminPasswordPrompt(false)}>Abbrechen</button>
+                <button
+                  className="au-btn au-btn-primary"
+                  onClick={() => {
+                    if (adminPasswordInput === ADMIN_PASSWORD) {
+                      setShowAdminPasswordPrompt(false);
+                      setShowAdmin(true);
+                    } else {
+                      setAdminPasswordError("Falsches Passwort.");
+                    }
+                  }}
+                >
+                  Entsperren
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
