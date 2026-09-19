@@ -402,9 +402,11 @@ function TruppReport({ tr, verbrauchFallback }) {
         return (
           <div key={i} className={i > 0 ? "au-report-segment-break" : ""}>
             <div className="au-report-head">
-              <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
+              <div className="au-report-logo-wrap">
+                <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
+              </div>
               <div style={{ flex: 1 }}>
-                <div className="au-report-title">{seg.truppfuehrer || "Trupp"}</div>
+                <div className="au-report-title">Atemschutzüberwachungs­protokoll</div>
                 {(seg.strasse || seg.ort) && <div className="au-report-einsatzort">{[seg.strasse, seg.ort].filter(Boolean).join(", ")}</div>}
                 {seg.einsatzort && <div className="au-report-einsatzort">{seg.einsatzort}</div>}
               </div>
@@ -413,7 +415,8 @@ function TruppReport({ tr, verbrauchFallback }) {
                 <div className="au-report-status">{seg.status}</div>
               </div>
             </div>
-            {stats.members.length > 0 && <div className="au-report-sub">Mitglieder: {stats.members.join(", ")}</div>}
+            {seg.truppfuehrer && <div className="au-report-sub">Truppführer: {seg.truppfuehrer}</div>}
+            {stats.members.length > 0 && <div className="au-report-sub">Mannschaft: {stats.members.join(", ")}</div>}
             {seg.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {seg.truppueberwacher}</div>}
             <table className="au-report-table">
               <tbody>
@@ -520,6 +523,7 @@ function AtemschutzUeberwachung() {
   const [endingId, setEndingId] = useState(null);
   const [choosingEndActionId, setChoosingEndActionId] = useState(null);
   const [confirmingFlaschenwechselId, setConfirmingFlaschenwechselId] = useState(null);
+  const [confirmingSimpleAction, setConfirmingSimpleAction] = useState(null);
   const [flaschenwechselNeuerAuftrag, setFlaschenwechselNeuerAuftrag] = useState(null);
   const [neuerAuftragForm, setNeuerAuftragForm] = useState(null);
   const [flaschenwechselPressureInput, setFlaschenwechselPressureInput] = useState("");
@@ -1165,23 +1169,27 @@ function AtemschutzUeberwachung() {
       const stats = getSegmentStats(seg, settings.verbrauch);
       const segLabel = segments.length > 1 ? ` (Auftrag ${i + 1}/${segments.length})` : "";
 
-      try { doc.addImage(LOGO_SRC, "JPEG", 14, 10, 16, 16); } catch (e) {}
+      try { doc.addImage(LOGO_SRC, "JPEG", 14, 8, 18, 18); } catch (e) {}
+      doc.setDrawColor(20, 23, 26);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(13.5, 7.5, 19, 19, 2, 2);
       doc.setFont(undefined, "bold");
       doc.setFontSize(15);
-      doc.text(seg.truppfuehrer || "Trupp", 34, 17);
+      doc.text("Atemschutzüberwachungsprotokoll", 37, 17);
       doc.setFont(undefined, "normal");
       doc.setFontSize(10);
-      if (seg.einsatzort) doc.text(seg.einsatzort, 34, 23);
+      if (seg.einsatzort) doc.text(seg.einsatzort, 37, 23);
       doc.setFontSize(9);
       doc.text(`${seg.status}${segLabel}`, 196, 15, { align: "right" });
       doc.setDrawColor(20, 20, 20);
-      doc.line(14, 30, 196, 30);
+      doc.line(14, 32, 196, 32);
 
       const infoRows = [
         ["Strasse", seg.strasse || "–"],
         ["Ort", seg.ort || "–"],
         ["Einsatzort", seg.einsatzort || "–"],
-        ["Mitglieder", stats.members.join(", ") || "–"],
+        ["Truppführer", seg.truppfuehrer || "–"],
+        ["Mannschaft", stats.members.join(", ") || "–"],
         ["Truppüberwacher", seg.truppueberwacher || "–"],
         ["Auftrag", seg.auftrag || "–"],
         ["Funkkanal", seg.funkkanal || "–"],
@@ -1194,7 +1202,7 @@ function AtemschutzUeberwachung() {
         ...(seg.endTime ? [["Ende", new Date(seg.endTime).toLocaleString("de-DE")]] : []),
         ["Gesamtdauer", fmtElapsedShort(stats.durationMs)],
       ];
-      doc.autoTable({ startY: 35, body: infoRows, theme: "grid", styles: { fontSize: 9 } });
+      doc.autoTable({ startY: 37, body: infoRows, theme: "grid", styles: { fontSize: 9 } });
 
       const logRows = [...(seg.pressureLog || [])].reverse().map((e) => [
         new Date(e.time).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
@@ -1355,6 +1363,61 @@ function AtemschutzUeberwachung() {
           <div className="au-modal" onClick={(e) => e.stopPropagation()}>
             <p className="au-modal-title">Optionen</p>
 
+            <div className="au-field">
+              <label>Abfragezeit</label>
+              <div className="au-slider-value">{settings.abfragezeit} min</div>
+              <input
+                type="range"
+                className="au-slider"
+                min={1}
+                max={10}
+                step={1}
+                list="au-abfragezeit-ticks"
+                value={settings.abfragezeit}
+                onChange={(e) => setSettings((s) => ({ ...s, abfragezeit: Number(e.target.value) }))}
+              />
+              <datalist id="au-abfragezeit-ticks">
+                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v} />)}
+              </datalist>
+              <div className="au-slider-scale">
+                <span>1</span><span>10</span>
+              </div>
+            </div>
+
+            <p className="au-modal-subtitle">Einsatz abschliessen</p>
+            {!confirmingArchive ? (
+              <button
+                className="au-btn au-btn-ghost"
+                style={{ width: "100%", marginBottom: 8 }}
+                disabled={trupps.length === 0}
+                onClick={() => setConfirmingArchive(true)}
+              >
+                📦 Einsatz abschliessen & archivieren
+              </button>
+            ) : (
+              <div style={{ marginBottom: 8 }}>
+                <div className="au-row-sub" style={{ marginBottom: 8 }}>
+                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" (Admin-Menü) und leert das aktuelle Dashboard für den nächsten Einsatz.
+                </div>
+                <div className="au-formbtns">
+                  <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
+                  <button className="au-btn au-btn-primary" onClick={archiveEinsatz}>Ja, abschliessen</button>
+                </div>
+              </div>
+            )}
+
+            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
+              Fertig
+            </button>
+          </div>
+        </div>
+      );
+
+      const adminModal = showAdmin && (
+        <div className="au-modal-backdrop" onClick={() => setShowAdmin(false)}>
+          <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Admin</p>
+
             <p className="au-modal-subtitle">Luftverbrauch berechnen (FKS-Richtwerte)</p>
             <div className="au-row2">
               <div className="au-field">
@@ -1408,27 +1471,6 @@ function AtemschutzUeberwachung() {
               </div>
             </div>
 
-            <div className="au-field">
-              <label>Abfragezeit</label>
-              <div className="au-slider-value">{settings.abfragezeit} min</div>
-              <input
-                type="range"
-                className="au-slider"
-                min={1}
-                max={10}
-                step={1}
-                list="au-abfragezeit-ticks"
-                value={settings.abfragezeit}
-                onChange={(e) => setSettings((s) => ({ ...s, abfragezeit: Number(e.target.value) }))}
-              />
-              <datalist id="au-abfragezeit-ticks">
-                {[1,2,3,4,5,6,7,8,9,10].map((v) => <option key={v} value={v} />)}
-              </datalist>
-              <div className="au-slider-scale">
-                <span>1</span><span>10</span>
-              </div>
-            </div>
-
             <p className="au-modal-subtitle">Alarmtöne</p>
             <label className="au-checkbox-row">
               <input
@@ -1451,45 +1493,11 @@ function AtemschutzUeberwachung() {
               <button
                 className="au-btn au-btn-ghost"
                 style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowSettings(false); exportPdf(trupps, buildExportFilename(trupps)); }}
+                onClick={() => { setShowAdmin(false); exportPdf(trupps, buildExportFilename(trupps)); }}
               >
                 📤 Alle Trupps als PDF teilen
               </button>
             )}
-
-            <p className="au-modal-subtitle">Einsatz abschliessen</p>
-            {!confirmingArchive ? (
-              <button
-                className="au-btn au-btn-ghost"
-                style={{ width: "100%", marginBottom: 8 }}
-                disabled={trupps.length === 0}
-                onClick={() => setConfirmingArchive(true)}
-              >
-                📦 Einsatz abschliessen & archivieren
-              </button>
-            ) : (
-              <div style={{ marginBottom: 8 }}>
-                <div className="au-row-sub" style={{ marginBottom: 8 }}>
-                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" (Admin-Menü) und leert das aktuelle Dashboard für den nächsten Einsatz.
-                </div>
-                <div className="au-formbtns">
-                  <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
-                  <button className="au-btn au-btn-primary" onClick={archiveEinsatz}>Ja, abschliessen</button>
-                </div>
-              </div>
-            )}
-
-            <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
-              Fertig
-            </button>
-          </div>
-        </div>
-      );
-
-      const adminModal = showAdmin && (
-        <div className="au-modal-backdrop" onClick={() => setShowAdmin(false)}>
-          <div className="au-modal au-modal-tall" onClick={(e) => e.stopPropagation()}>
-            <p className="au-modal-title">Admin</p>
 
             <p className="au-modal-subtitle">Vergangene Einsätze</p>
             <button
@@ -1727,7 +1735,8 @@ function AtemschutzUeberwachung() {
       .au-report { padding: 14px 0 26px; border-bottom: 1px dashed #999; page-break-after: always; }
       .au-report:last-child { page-break-after: auto; }
       .au-report-head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
-      .au-report-logo { width: 44px; height: 44px; object-fit: contain; background: #000; border-radius: 8px; flex-shrink: 0; }
+      .au-report-logo-wrap { width: 56px; height: 56px; flex-shrink: 0; background: #14171A; border-radius: 12px; padding: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.18); display: flex; align-items: center; justify-content: center; }
+      .au-report-logo { width: 100%; height: 100%; object-fit: contain; }
       .au-report-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 20px; text-transform: uppercase; }
       .au-report-einsatzort { font-size: 14px; color: #333; font-weight: 600; margin-top: 2px; }
       .au-report-status { font-size: 13px; color: #444; flex-shrink: 0; }
@@ -2251,10 +2260,10 @@ function AtemschutzUeberwachung() {
 
               <div className="au-actions">
                 {tr.status === "active" && !tr.zielErreichtTime && (
-                  <button className="au-chip" onClick={() => markZielErreicht(tr.id)}>Einsatzziel erreicht</button>
+                  <button className="au-chip" onClick={() => setConfirmingSimpleAction({ id: tr.id, type: "ziel" })}>Einsatzziel erreicht</button>
                 )}
                 {tr.status === "active" && (
-                  <button className="au-chip" onClick={() => markReturning(tr.id)}>Rückzug gemeldet</button>
+                  <button className="au-chip" onClick={() => setConfirmingSimpleAction({ id: tr.id, type: "rueckzug" })}>Rückzug gemeldet</button>
                 )}
                 <button className="au-chip chip-danger" onClick={() => setChoosingEndActionId(tr.id)}>Einsatz Ende</button>
                 {editingId !== tr.id && (
@@ -2371,6 +2380,34 @@ function AtemschutzUeberwachung() {
             <div className="au-formbtns">
               <button className="au-btn au-btn-ghost" onClick={() => setEndingId(null)}>Abbrechen</button>
               <button className="au-btn au-btn-primary" onClick={() => confirmEnd(endingId)}>Einsatz beenden</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmingSimpleAction && (
+        <div className="au-modal-backdrop" onClick={() => setConfirmingSimpleAction(null)}>
+          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">
+              {confirmingSimpleAction.type === "ziel" ? "Einsatzziel erreicht bestätigen" : "Rückzug gemeldet bestätigen"}
+            </p>
+            <div className="au-row-sub" style={{ marginBottom: 12 }}>
+              {confirmingSimpleAction.type === "ziel"
+                ? "Wird mit Zeitstempel im Protokoll vermerkt und dient zur Berechnung des Rückzugsdrucks."
+                : "Wird mit Zeitstempel im Protokoll vermerkt."}
+            </div>
+            <div className="au-formbtns">
+              <button className="au-btn au-btn-ghost" onClick={() => setConfirmingSimpleAction(null)}>Abbrechen</button>
+              <button
+                className="au-btn au-btn-primary"
+                onClick={() => {
+                  if (confirmingSimpleAction.type === "ziel") markZielErreicht(confirmingSimpleAction.id);
+                  else markReturning(confirmingSimpleAction.id);
+                  setConfirmingSimpleAction(null);
+                }}
+              >
+                Ja, bestätigen
+              </button>
             </div>
           </div>
         </div>
