@@ -411,7 +411,7 @@ function TruppReport({ tr, verbrauchFallback }) {
                 <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" className="au-report-logo" />
               </div>
               <div style={{ flex: 1 }}>
-                <div className="au-report-title">Atemschutzüberwachungs­protokoll</div>
+                <div className="au-report-title">Atemschutzüberwachungs­protokoll{tr.isTraining ? " – ÜBUNG" : ""}</div>
                 {(seg.strasse || seg.ort) && <div className="au-report-einsatzort">{[seg.strasse, seg.ort].filter(Boolean).join(", ")}</div>}
                 {seg.einsatzort && <div className="au-report-einsatzort">{seg.einsatzort}</div>}
               </div>
@@ -519,7 +519,15 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
+  const APP_VERSION = "2.2";
+  const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
+  const [trainingMode, setTrainingMode] = useState(false);
+  const TRAINING_MODE_LOCAL_KEY = "atemschutz_training_mode_local";
+  const [isOnline, setIsOnline] = useState(true);
+  const [notifyPermission, setNotifyPermission] = useState("default");
+  const wakeLockRef = useRef(null);
+  const notifiedStateRef = useRef({});
   const [muted, setMuted] = useState({});
   const [pressureInputs, setPressureInputs] = useState({});
   const [messageInputs, setMessageInputs] = useState({});
@@ -551,6 +559,7 @@ function AtemschutzUeberwachung() {
   const [docNameEditText, setDocNameEditText] = useState("");
   const [uploadWarning, setUploadWarning] = useState("");
   const [gpsStatus, setGpsStatus] = useState("");
+  const [backupMessage, setBackupMessage] = useState("");
   const beep = useBeeper();
   const lastAlarmBeep = useRef({});
   const lastWarnBeep = useRef({});
@@ -664,6 +673,100 @@ function AtemschutzUeberwachung() {
     return () => { cancelled = true; unsubs.forEach((u) => { try { u && u(); } catch (e) {} }); };
   }, []);
 
+  // Übungsmodus: rein lokale Einstellung pro Gerät (nicht mit anderen Geräten synchronisiert),
+  // damit niemand aus Versehen auf einem anderen Handy im Übungsmodus landet.
+  useEffect(() => {
+    try {
+      setTrainingMode(window.localStorage.getItem(TRAINING_MODE_LOCAL_KEY) === "1");
+    } catch (e) {}
+  }, []);
+
+  const toggleTrainingMode = () => {
+    setTrainingMode((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(TRAINING_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
+      return next;
+    });
+  };
+
+  // Online/Offline-Anzeige: rein informativ, zeigt ob dieses Gerät gerade mit den
+  // anderen Geräten synchronisieren kann oder gerade nur lokal arbeitet.
+  useEffect(() => {
+    try { setIsOnline(navigator.onLine); } catch (e) {}
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // Benachrichtigungsberechtigung beim Start auslesen (ohne den Browser-Dialog
+  // ungefragt zu öffnen — das passiert erst per Button im Admin-Menü).
+  useEffect(() => {
+    try {
+      if ("Notification" in window) setNotifyPermission(Notification.permission);
+    } catch (e) {}
+  }, []);
+
+  const requestNotifyPermission = async () => {
+    try {
+      if (!("Notification" in window)) return;
+      const result = await Notification.requestPermission();
+      setNotifyPermission(result);
+    } catch (e) {}
+  };
+
+  const fireLocalNotification = (title, body, tag) => {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then((reg) => {
+          if (reg && reg.showNotification) {
+            reg.showNotification(title, { body, tag, renotify: true, vibrate: [200, 100, 200] });
+          } else {
+            new Notification(title, { body, tag });
+          }
+        }).catch(() => {
+          try { new Notification(title, { body, tag }); } catch (e2) {}
+        });
+      } else {
+        new Notification(title, { body, tag });
+      }
+    } catch (e) {}
+  };
+
+  // Wach-Halte-Funktion: Bildschirm bleibt während der aktiven Überwachung an,
+  // damit die App nicht in den Standby geht und Alarme verpasst werden.
+  useEffect(() => {
+    let released = false;
+    const acquire = async () => {
+      try {
+        if (screen === "operation" && "wakeLock" in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+        }
+      } catch (e) {}
+    };
+    if (screen === "operation") {
+      acquire();
+      const reacquire = () => {
+        if (document.visibilityState === "visible" && screen === "operation" && !released) acquire();
+      };
+      document.addEventListener("visibilitychange", reacquire);
+      return () => {
+        released = true;
+        document.removeEventListener("visibilitychange", reacquire);
+        try { wakeLockRef.current && wakeLockRef.current.release(); } catch (e) {}
+        wakeLockRef.current = null;
+      };
+    } else {
+      try { wakeLockRef.current && wakeLockRef.current.release(); } catch (e) {}
+      wakeLockRef.current = null;
+    }
+  }, [screen]);
+
   useEffect(() => {
     if (!loaded) return;
     (async () => {
@@ -771,6 +874,17 @@ function AtemschutzUeberwachung() {
           dueBeepRef.current[dueKey] = now;
         }
       }
+      // Benachrichtigung nur beim Wechsel in einen kritischeren Zustand auslösen
+      // (nicht bei jedem Render), damit das Handy nicht zugespamt wird.
+      const prevNotifyState = notifiedStateRef.current[tr.id];
+      if (state !== prevNotifyState) {
+        notifiedStateRef.current[tr.id] = state;
+        if (state === "alarm") {
+          fireLocalNotification("🔴 Rückzug – " + (tr.truppfuehrer || "Trupp"), "Umkehrdruck (50 bar) erreicht – sofortiger Rückzug!", "au-alarm-" + tr.id);
+        } else if (state === "warn") {
+          fireLocalNotification("🟠 Rückzugsdruck – " + (tr.truppfuehrer || "Trupp"), "Rückzugsdruck erreicht.", "au-warn-" + tr.id);
+        }
+      }
     });
   }, [now, trupps, muted, beep, computeTrupp, settings.warnSoundEnabled, settings.alarmSoundEnabled]);
 
@@ -796,6 +910,7 @@ function AtemschutzUeberwachung() {
       zielErreichtTime: null,
       pressureLog: [],
       auftragsProtokolle: [],
+      isTraining: trainingMode,
     };
     setTrupps((prev) => [t, ...prev]);
     setForm({
@@ -1014,8 +1129,9 @@ function AtemschutzUeberwachung() {
     setMessageInputs((m) => ({ ...m, [id]: "" }));
   };
 
-  const activeTrupps = trupps.filter((t) => t.status !== "done");
-  const doneTrupps = trupps.filter((t) => t.status === "done");
+  const modeTrupps = trupps.filter((t) => !!t.isTraining === trainingMode);
+  const activeTrupps = modeTrupps.filter((t) => t.status !== "done");
+  const doneTrupps = modeTrupps.filter((t) => t.status === "done");
 
   const truppRank = (t) => {
     if (t.status === "bereit") return 3;
@@ -1039,7 +1155,8 @@ function AtemschutzUeberwachung() {
     einsaetze.flatMap((ein) => ein.trupps || []).find((t) => t.id === id);
 
   const archiveEinsatz = () => {
-    const startedAt = trupps.reduce(
+    const toArchive = trupps.filter((t) => !!t.isTraining === trainingMode);
+    const startedAt = toArchive.reduce(
       (m, t) => (t.startTime && (m === null || t.startTime < m) ? t.startTime : m),
       null
     );
@@ -1047,10 +1164,13 @@ function AtemschutzUeberwachung() {
       id: nextId(),
       startedAt: startedAt || Date.now(),
       endedAt: Date.now(),
-      trupps,
+      trupps: toArchive,
+      isTraining: trainingMode,
     };
     setEinsaetze((prev) => [archived, ...prev]);
-    setTrupps([]);
+    // Nur die Trupps des aktuellen Modus (echt oder Übung) werden archiviert/geleert;
+    // Trupps im jeweils anderen Modus bleiben unangetastet.
+    setTrupps((prev) => prev.filter((t) => !!t.isTraining !== trainingMode));
     setConfirmingArchive(false);
     setShowSettings(false);
     setScreen("start");
@@ -1060,6 +1180,65 @@ function AtemschutzUeberwachung() {
     setEinsaetze((prev) => prev.filter((e) => e.id !== id));
     setConfirmingDeleteEinsatz(null);
     if (viewingEinsatzId === id) setViewingEinsatzId(null);
+  };
+
+  const exportBackup = async () => {
+    setBackupMessage("");
+    try {
+      const backup = {
+        type: "atemschutz-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        trupps,
+        einsaetze,
+        mannschaft,
+        settings,
+      };
+      const json = JSON.stringify(backup, null, 2);
+      const filenameBase = `Backup_Atemschutz_${new Date().toISOString().slice(0, 10)}`;
+      const blob = new Blob([json], { type: "application/json" });
+      const file = new File([blob], `${filenameBase}.json`, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filenameBase });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filenameBase}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+      setBackupMessage("Backup erstellt: " + filenameBase + ".json");
+    } catch (e) {
+      setBackupMessage("Backup fehlgeschlagen.");
+    }
+  };
+
+  const handleRestoreBackup = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setBackupMessage("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        if (!data || data.type !== "atemschutz-backup") {
+          setBackupMessage("Ungültige Backup-Datei.");
+          return;
+        }
+        if (Array.isArray(data.trupps)) setTrupps(data.trupps);
+        if (Array.isArray(data.einsaetze)) setEinsaetze(data.einsaetze);
+        if (Array.isArray(data.mannschaft)) setMannschaft(data.mannschaft);
+        if (data.settings) setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
+        setBackupMessage("Backup vom " + (data.exportedAt ? new Date(data.exportedAt).toLocaleString("de-DE") : "?") + " wiederhergestellt.");
+      } catch (e2) {
+        setBackupMessage("Backup-Datei konnte nicht gelesen werden.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleInfoUpload = async (e) => {
@@ -1184,7 +1363,7 @@ function AtemschutzUeberwachung() {
       doc.roundedRect(13.5, 7.5, 19, 19, 2, 2);
       doc.setFont(undefined, "bold");
       doc.setFontSize(15);
-      doc.text("Atemschutzüberwachungsprotokoll", 37, 17);
+      doc.text(tr.isTraining ? "Atemschutzüberwachungsprotokoll – ÜBUNG" : "Atemschutzüberwachungsprotokoll", 37, 17);
       doc.setFont(undefined, "normal");
       doc.setFontSize(10);
       if (seg.einsatzort) doc.text(seg.einsatzort, 37, 23);
@@ -1239,7 +1418,8 @@ function AtemschutzUeberwachung() {
     const dateStr = new Date(dateSource).toLocaleDateString("de-DE").split(".").join("-");
     const addressStr = [withAddress.strasse, withAddress.ort].filter(Boolean).join(" ") || withAddress.einsatzort || "Einsatz";
     const safe = addressStr.replace(/[\/\\?%*:|"<>]/g, "").replace(/\s+/g, "_");
-    return `${dateStr}_${safe}`;
+    const trainingPrefix = (list || []).some((t) => t.isTraining) ? "UEBUNG_" : "";
+    return `${trainingPrefix}${dateStr}_${safe}`;
   };
 
   const exportPdf = async (list, filenameBase) => {
@@ -1248,7 +1428,38 @@ function AtemschutzUeberwachung() {
       try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        list.forEach((tr, i) => renderTruppIntoPdf(doc, tr, i === 0));
+        if (list.length > 1) {
+          try { doc.addImage(LOGO_SRC, "JPEG", 14, 10, 22, 22); } catch (e) {}
+          doc.setDrawColor(20, 23, 26);
+          doc.setLineWidth(0.4);
+          doc.roundedRect(13.5, 9.5, 23, 23, 2, 2);
+          doc.setFont(undefined, "bold");
+          doc.setFontSize(17);
+          doc.text("Atemschutzüberwachung – Übersicht", 42, 20);
+          doc.setFont(undefined, "normal");
+          doc.setFontSize(10);
+          const dateStr = new Date().toLocaleDateString("de-DE") + " " + new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+          doc.text(`Erstellt: ${dateStr}`, 42, 27);
+          const adressen = Array.from(
+            new Set(list.map((t) => [t.strasse, t.ort].filter(Boolean).join(", ")).filter(Boolean))
+          );
+          if (adressen.length) doc.text(`Adresse: ${adressen.join(" / ")}`, 42, 33);
+          if (list.some((t) => t.isTraining)) {
+            doc.setFont(undefined, "bold");
+            doc.setTextColor(200, 120, 0);
+            doc.text("ÜBUNG", 196, 20, { align: "right" });
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, "normal");
+          }
+          doc.autoTable({
+            startY: 42,
+            head: [["Truppführer", "Auftrag", "Einsatzort", "Status"]],
+            body: list.map((t) => [t.truppfuehrer || "–", t.auftrag || "–", t.einsatzort || "–", t.status || "–"]),
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [20, 23, 26] },
+          });
+        }
+        list.forEach((tr, i) => renderTruppIntoPdf(doc, tr, i === 0 && list.length === 1));
         const blob = doc.output("blob");
         const file = new File([blob], `${filenameBase}.pdf`, { type: "application/pdf" });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1398,7 +1609,7 @@ function AtemschutzUeberwachung() {
               <button
                 className="au-btn au-btn-ghost"
                 style={{ width: "100%", marginBottom: 8 }}
-                disabled={trupps.length === 0}
+                disabled={modeTrupps.length === 0}
                 onClick={() => setConfirmingArchive(true)}
               >
                 📦 Einsatz abschliessen & archivieren
@@ -1406,7 +1617,7 @@ function AtemschutzUeberwachung() {
             ) : (
               <div style={{ marginBottom: 8 }}>
                 <div className="au-row-sub" style={{ marginBottom: 8 }}>
-                  Archiviert alle {trupps.length} Trupps unter „Vergangene Einsätze" (Admin-Menü) und leert das aktuelle Dashboard für den nächsten Einsatz.
+                  Archiviert alle {modeTrupps.length} Trupps unter „Vergangene Einsätze" (Admin-Menü) und leert das aktuelle Dashboard für den nächsten Einsatz.
                 </div>
                 <div className="au-formbtns">
                   <button className="au-btn au-btn-ghost" onClick={() => setConfirmingArchive(false)}>Abbrechen</button>
@@ -1498,11 +1709,11 @@ function AtemschutzUeberwachung() {
               Ton bei Umkehrdruck (50 bar)
             </label>
 
-            {trupps.length > 0 && (
+            {modeTrupps.length > 0 && (
               <button
                 className="au-btn au-btn-ghost"
                 style={{ width: "100%", marginBottom: 8 }}
-                onClick={() => { setShowAdmin(false); exportPdf(trupps, buildExportFilename(trupps)); }}
+                onClick={() => { setShowAdmin(false); exportPdf(modeTrupps, buildExportFilename(modeTrupps)); }}
               >
                 📤 Alle Trupps als PDF teilen
               </button>
@@ -1512,11 +1723,50 @@ function AtemschutzUeberwachung() {
             <button
               className="au-btn au-btn-ghost"
               style={{ width: "100%", marginBottom: 8 }}
-              disabled={einsaetze.length === 0}
+              disabled={einsaetze.filter((e) => !!e.isTraining === trainingMode).length === 0}
               onClick={() => { setShowAdmin(false); setScreen("archiv"); }}
             >
-              📁 Vergangene Einsätze ansehen & löschen {einsaetze.length > 0 ? `(${einsaetze.length})` : ""}
+              📁 Vergangene Einsätze ansehen & löschen {einsaetze.filter((e) => !!e.isTraining === trainingMode).length > 0 ? `(${einsaetze.filter((e) => !!e.isTraining === trainingMode).length})` : ""}
             </button>
+
+            <p className="au-modal-subtitle">Übungsmodus</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Im Übungsmodus erfasste Trupps, Protokolle und archivierte Einsätze werden komplett getrennt von echten Einsätzen gespeichert und erscheinen nie zusammen in derselben Liste oder im selben PDF. Diese Einstellung gilt nur für dieses Gerät.
+            </div>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8, borderColor: trainingMode ? "#F5A623" : undefined, color: trainingMode ? "#F5A623" : undefined }}
+              onClick={toggleTrainingMode}
+            >
+              {trainingMode ? "🎓 Übungsmodus AKTIV – ausschalten" : "🎓 Übungsmodus einschalten"}
+            </button>
+
+            <p className="au-modal-subtitle">Benachrichtigungen</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              {notifyPermission === "granted"
+                ? "Aktiviert: Bei Rückzugsdruck oder Umkehrdruck (50 bar) erscheint zusätzlich eine Systembenachrichtigung, auch wenn das Handy gesperrt ist oder die App im Hintergrund läuft (solange die App nicht vollständig beendet wurde)."
+                : notifyPermission === "denied"
+                ? "Blockiert. Erlaube Benachrichtigungen für diese Seite in den iOS/Browser-Einstellungen, um sie wieder zu aktivieren."
+                : "Noch nicht aktiviert. Zusätzlich zum Alarmton erscheint dann bei Rückzugsdruck/Umkehrdruck eine Systembenachrichtigung."}
+            </div>
+            {notifyPermission !== "granted" && notifyPermission !== "denied" && (
+              <button className="au-btn au-btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={requestNotifyPermission}>
+                🔔 Benachrichtigungen aktivieren
+              </button>
+            )}
+
+            <p className="au-modal-subtitle">Backup</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Sichert alle Trupps, archivierten Einsätze, Mannschaftsliste und Einstellungen als Datei – unabhängig von Firebase, z.B. für den Notfall oder einen Geräteumzug.
+            </div>
+            <button className="au-btn au-btn-ghost" style={{ width: "100%", marginBottom: 8 }} onClick={exportBackup}>
+              💾 Backup exportieren
+            </button>
+            <label className="au-btn au-btn-ghost au-upload-label" style={{ marginBottom: 8 }}>
+              📂 Backup wiederherstellen
+              <input type="file" accept="application/json" onChange={handleRestoreBackup} style={{ display: "none" }} />
+            </label>
+            {backupMessage && <div className="au-row-sub" style={{ marginBottom: 8 }}>{backupMessage}</div>}
 
             <p className="au-modal-subtitle">Atemschutz-Infos</p>
             <label className="au-btn au-btn-primary au-upload-label">
@@ -1586,6 +1836,12 @@ function AtemschutzUeberwachung() {
       .au-start-root { min-height: 100vh; background: #12151A; color: #F5F6F7; position: relative; }
       .au-start-icons { position: absolute; top: 18px; right: 18px; z-index: 5; display: flex; gap: 8px; }
       .au-start-admin-wrap { position: absolute; top: 18px; left: 18px; z-index: 5; }
+      .au-start-version { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 11px; color: #5B6470; letter-spacing: 0.03em; z-index: 4; }
+      .au-training-banner { background: #F5A623; color: #1A1300; font-weight: 700; text-align: center; font-size: 13px; letter-spacing: 0.03em; padding: 8px 12px; }
+      .au-training-banner-start { position: absolute; top: 64px; left: 0; right: 0; z-index: 4; background: #F5A623; }
+      .au-online-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+      .au-online-dot.online { background: #3DBE6C; }
+      .au-online-dot.offline { background: #E24C4C; }
       .au-start-gear { background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; }
       .au-start-clock-big { font-family: 'IBM Plex Mono', 'Inter', monospace; font-size: 30px; font-weight: 600; color: #E8ECEF; margin-bottom: 18px; letter-spacing: 0.02em; }
       .au-start { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
@@ -1778,11 +2034,12 @@ function AtemschutzUeberwachung() {
         <div className="au-start-icons">
           <button className="au-start-gear" onClick={() => setShowSettings(true)} aria-label="Optionen">⚙</button>
         </div>
+        {trainingMode && <div className="au-training-banner au-training-banner-start">🎓 ÜBUNGSMODUS AKTIV</div>}
         <div className="au-start">
           <div className="au-start-clock-big">{fmtClock(new Date(now))}</div>
           <div className="au-logo-ring"><img src={LOGO_SRC} alt="Feuerwehr Zuchwil Logo" /></div>
           <p className="au-start-eyebrow">Feuerwehr Zuchwil</p>
-          <h1 className="au-start-title">Atemschutz</h1>
+          <h1 className="au-start-title">Atemschutz{trainingMode ? " · Übung" : ""}</h1>
 
           <button className="au-start-btn" onClick={() => setScreen("operation")}>Atemschutzüberwachung</button>
           <button className="au-start-btn-secondary" onClick={() => setShowInfoLibrary(true)}>Atemschutz Infos</button>
@@ -1792,6 +2049,9 @@ function AtemschutzUeberwachung() {
               {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} bereits im Einsatz →
             </button>
           )}
+        </div>
+        <div className="au-start-version">
+          <span className={`au-online-dot ${isOnline ? "online" : "offline"}`} /> {isOnline ? "Online" : "Offline – lokale Daten"} · v{APP_VERSION} · {APP_VERSION_DATE}
         </div>
         {infoLibraryModal}
         {infoDocViewerModal}
@@ -1847,6 +2107,7 @@ function AtemschutzUeberwachung() {
 
   if (screen === "archiv") {
     const viewingEinsatz = einsaetze.find((e) => e.id === viewingEinsatzId);
+    const modeEinsaetze = einsaetze.filter((e) => !!e.isTraining === trainingMode);
     return (
       <div className="au-app au-root">
         {styleBlock}
@@ -1855,17 +2116,21 @@ function AtemschutzUeberwachung() {
             <button className="au-home" onClick={() => (viewingEinsatz ? setViewingEinsatzId(null) : setScreen("start"))}>
               {viewingEinsatz ? "← Übersicht" : "← Start"}
             </button>
-            <h1 className="au-title">{viewingEinsatz ? "Einsatz-Details" : "Vergangene Einsätze"}</h1>
+            <h1 className="au-title">{viewingEinsatz ? "Einsatz-Details" : trainingMode ? "Vergangene Übungen" : "Vergangene Einsätze"}</h1>
           </div>
         </div>
 
+        {trainingMode && !viewingEinsatz && (
+          <div className="au-training-banner">🎓 Übungsmodus – hier siehst du nur archivierte Übungen, keine echten Einsätze</div>
+        )}
+
         <div className="au-body">
-          {!viewingEinsatz && einsaetze.length === 0 && (
-            <div className="au-empty">Noch keine archivierten Einsätze.</div>
+          {!viewingEinsatz && modeEinsaetze.length === 0 && (
+            <div className="au-empty">{trainingMode ? "Noch keine archivierten Übungen." : "Noch keine archivierten Einsätze."}</div>
           )}
 
           {!viewingEinsatz &&
-            einsaetze.map((ein) => {
+            modeEinsaetze.map((ein) => {
               const adressen = Array.from(
                 new Set((ein.trupps || []).map((t) => [t.strasse, t.ort].filter(Boolean).join(", ")).filter(Boolean))
               );
@@ -1938,12 +2203,17 @@ function AtemschutzUeberwachung() {
         <div className="au-header-left">
           <button className="au-home" onClick={() => setScreen("start")}>← Start</button>
           <h1 className="au-title">Atemschutz­überwachung</h1>
-          <div className="au-count">{activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} im Einsatz · {fmtClock(new Date(now))}</div>
+          <div className="au-count">
+            {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} im Einsatz · {fmtClock(new Date(now))} ·{" "}
+            <span className={`au-online-dot ${isOnline ? "online" : "offline"}`} /> {isOnline ? "Online" : "Offline"}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="au-gear" onClick={() => setShowInfoLibrary(true)} aria-label="Atemschutz-Infos">📎</button>
         </div>
       </div>
+
+      {trainingMode && <div className="au-training-banner">🎓 ÜBUNGSMODUS AKTIV – keine echten Einsatzdaten</div>}
 
       {mannschaft.length > 0 && (
         <datalist id="au-mannschaft-list">
@@ -2632,7 +2902,6 @@ function AtemschutzUeberwachung() {
     </div>
   );
 }
-
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<AtemschutzUeberwachung />);
