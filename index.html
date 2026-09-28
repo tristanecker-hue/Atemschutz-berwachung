@@ -273,7 +273,7 @@ const IconClipboard = () => (
 );
 
 // ---------- gauge matching reference: semi-circular, red/orange/green zones + needle ----------
-function PressureGauge({ value, max, rueckzugsdruck, size = 210 }) {
+function PressureGauge({ value, max, rueckzugsdruck, size = 210, needleColor = "#20242B" }) {
   const cx = size / 2;
   const cy = size / 2 + 6;
   const rOuter = size / 2 - 14;
@@ -305,10 +305,10 @@ function PressureGauge({ value, max, rueckzugsdruck, size = 210 }) {
         <path d={arcPath(cx, cy, rOuter, angleFor(orangeEnd), angleFor(clampedMax))} stroke="#3E8E41" strokeWidth={strokeW} fill="none" strokeLinecap="round" />
         <polygon
           points={`${needleBase1.x},${needleBase1.y} ${needleTip.x},${needleTip.y} ${needleBase2.x},${needleBase2.y}`}
-          fill="#20242B"
+          fill={needleColor}
           style={{ transition: "all 0.7s ease-out" }}
         />
-        <circle cx={cx} cy={cy} r="9" fill="#20242B" />
+        <circle cx={cx} cy={cy} r="9" fill={needleColor} />
       </svg>
     </div>
   );
@@ -520,7 +520,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.8";
+  const APP_VERSION = "2.11";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -578,9 +578,15 @@ function AtemschutzUeberwachung() {
   const speak = useCallback((text) => {
     try {
       if (!("speechSynthesis" in window)) return;
+      // iOS/Android können die Sprachausgabe "einfrieren" (z.B. nach Bildschirmsperre).
+      // resume() + ein kurzes cancel() der Warteschlange beugen dem vor, damit
+      // Ansagen bei einem Alarm zuverlässig kommen statt stumm zu bleiben.
+      window.speechSynthesis.resume();
+      window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = "de-DE";
       utter.rate = 1;
+      utter.volume = 1;
       window.speechSynthesis.speak(utter);
     } catch (e) {}
   }, []);
@@ -1207,13 +1213,19 @@ function AtemschutzUeberwachung() {
   };
   const sortedActiveTrupps = [...activeTrupps].sort((a, b) => truppRank(a) - truppRank(b));
 
-  const globalAlertLevel = activeTrupps.reduce((level, t) => {
-    if (t.status === "bereit") return level;
+  let globalAlertLevel = null;
+  const globalAlertNames = { alarm: [], warn: [] };
+  activeTrupps.forEach((t) => {
+    if (t.status === "bereit") return;
     const { state } = computeTrupp(t);
-    if (state === "alarm") return "alarm";
-    if (state === "warn" && level !== "alarm") return "warn";
-    return level;
-  }, null);
+    if (state === "alarm") {
+      globalAlertLevel = "alarm";
+      globalAlertNames.alarm.push(t.truppfuehrer || "Trupp");
+    } else if (state === "warn") {
+      if (globalAlertLevel !== "alarm") globalAlertLevel = "warn";
+      globalAlertNames.warn.push(t.truppfuehrer || "Trupp");
+    }
+  });
 
   const findTruppById = (id) =>
     trupps.find((t) => t.id === id) ||
@@ -1815,10 +1827,23 @@ function AtemschutzUeberwachung() {
               <input
                 type="checkbox"
                 checked={settings.speechEnabled}
-                onChange={(e) => setSettings((s) => ({ ...s, speechEnabled: e.target.checked }))}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setSettings((s) => ({ ...s, speechEnabled: on }));
+                  if (on) speak("Sprachausgabe aktiviert.");
+                }}
               />
               Sprachausgabe (sagt Rückzug/Umkehrdruck laut an)
             </label>
+            {settings.speechEnabled && (
+              <button
+                className="au-btn au-btn-ghost"
+                style={{ width: "100%", marginBottom: 8 }}
+                onClick={() => speak("Testansage. Sprachausgabe funktioniert.")}
+              >
+                🔊 Sprachausgabe testen
+              </button>
+            )}
 
             {modeTrupps.length > 0 && (
               <button
@@ -2024,10 +2049,11 @@ function AtemschutzUeberwachung() {
       .au-card.alarm { border-color: #D9483D; animation: au-pulse 1.2s ease-in-out infinite; }
       .au-card.warn { border-color: #E8912D; animation: au-pulse-warn 1.2s ease-in-out infinite; }
       @keyframes au-pulse-warn { 0%, 100% { background: #fff; } 50% { background: #FCF1E1; } }
-      .au-alert-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 60; animation: au-alert-blink 1s steps(1) infinite; }
-      .au-alert-overlay.warn { background: rgba(232, 145, 45, 0.28); }
-      .au-alert-overlay.alarm { background: rgba(217, 72, 61, 0.32); }
-      @keyframes au-alert-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+      .au-alert-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 92; padding: 10px 14px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); text-align: center; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.03em; color: #fff; text-transform: uppercase; }
+      .au-alert-banner.warn { animation: au-banner-blink-warn 1s steps(1) infinite; }
+      .au-alert-banner.alarm { animation: au-banner-blink-alarm 0.6s steps(1) infinite; }
+      @keyframes au-banner-blink-warn { 0%, 49% { background: #E8912D; } 50%, 100% { background: #B36A1C; } }
+      @keyframes au-banner-blink-alarm { 0%, 49% { background: #D9483D; } 50%, 100% { background: #8E2A22; } }
       @keyframes au-pulse { 0%, 100% { background: #fff; } 50% { background: #FCEEEC; } }
       .au-gaugewrap { display: flex; flex-direction: column; align-items: center; padding: 18px 16px 6px; }
       .au-gauge-value { font-size: 40px; font-weight: 700; margin-top: -34px; letter-spacing: -0.02em; }
@@ -2199,11 +2225,20 @@ function AtemschutzUeberwachung() {
     <div className="au-training-chip">🎓 Übungsmodus aktiv</div>
   );
 
+  const globalAlertBanner = globalAlertLevel && (
+    <div className={`au-alert-banner ${globalAlertLevel}`}>
+      {globalAlertLevel === "alarm"
+        ? `🔴 SOFORTIGER RÜCKZUG – ${globalAlertNames.alarm.join(", ")}`
+        : `🟠 RÜCKZUGSDRUCK – ${globalAlertNames.warn.join(", ")}`}
+    </div>
+  );
+
   if (screen === "start") {
     return (
       <div className={`au-app au-start-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
+        {globalAlertBanner}
         <div className="au-start-admin-wrap">
           <button
             className="au-start-gear"
@@ -2294,6 +2329,7 @@ function AtemschutzUeberwachung() {
       <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
+        {globalAlertBanner}
         <div className="au-header">
           <div className="au-header-left">
             <button className="au-home" onClick={() => (viewingEinsatz ? setViewingEinsatzId(null) : setScreen("start"))}>
@@ -2382,7 +2418,7 @@ function AtemschutzUeberwachung() {
     <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
       {styleBlock}
       {trainingChip}
-      {globalAlertLevel && <div className={`au-alert-overlay ${globalAlertLevel}`} />}
+      {globalAlertBanner}
       <div className="au-header">
         <div className="au-header-left">
           <button className="au-home" onClick={() => setScreen("start")}>← Start</button>
@@ -2603,7 +2639,7 @@ function AtemschutzUeberwachung() {
           return (
             <div key={tr.id} className={`au-card ${state === "alarm" ? "alarm" : state === "warn" ? "warn" : ""}`}>
               <div className="au-gaugewrap">
-                <PressureGauge value={remaining} max={tr.einstiegsdruck} rueckzugsdruck={rueckzugsdruck} />
+                <PressureGauge value={remaining} max={tr.einstiegsdruck} rueckzugsdruck={rueckzugsdruck} needleColor={darkMode ? "#F5F6F7" : "#20242B"} />
                 <div className={`au-gauge-value ${state}`}>{Math.round(remaining)}</div>
                 <div className="au-gauge-caption">{fmtAgo(now - last.time)}</div>
                 <div className="au-gauge-thresh">Verbrauch {verbrauch.toFixed(1)} bar/min · Rückzug ab {Math.round(rueckzugsdruck)} bar · Alarm ab 50 bar</div>
