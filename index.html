@@ -506,6 +506,7 @@ const DEFAULT_SETTINGS = {
   belastungsstufe: "marsch",
   warnSoundEnabled: true,
   alarmSoundEnabled: true,
+  speechEnabled: false,
 };
 
 function AtemschutzUeberwachung() {
@@ -519,11 +520,15 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.5";
+  const APP_VERSION = "2.8";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
   const TRAINING_MODE_LOCAL_KEY = "atemschutz_training_mode_local";
+  const [gloveMode, setGloveMode] = useState(false);
+  const GLOVE_MODE_LOCAL_KEY = "atemschutz_glove_mode_local";
+  const [darkMode, setDarkMode] = useState(false);
+  const DARK_MODE_LOCAL_KEY = "atemschutz_dark_mode_local";
   const [isOnline, setIsOnline] = useState(true);
   const [notifyPermission, setNotifyPermission] = useState("default");
   const wakeLockRef = useRef(null);
@@ -565,6 +570,20 @@ function AtemschutzUeberwachung() {
   const lastWarnBeep = useRef({});
   const dueBeepRef = useRef({});
   const dueNotifiedRef = useRef({});
+  const vibrate = useCallback((pattern) => {
+    try {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    } catch (e) {}
+  }, []);
+  const speak = useCallback((text) => {
+    try {
+      if (!("speechSynthesis" in window)) return;
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "de-DE";
+      utter.rate = 1;
+      window.speechSynthesis.speak(utter);
+    } catch (e) {}
+  }, []);
 
   const [form, setForm] = useState({
     truppfuehrer: "",
@@ -686,6 +705,37 @@ function AtemschutzUeberwachung() {
     setTrainingMode((prev) => {
       const next = !prev;
       try { window.localStorage.setItem(TRAINING_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
+      return next;
+    });
+  };
+
+  // Handschuh-Modus: rein lokale Anzeige-Einstellung pro Gerät (grössere Buttons/Eingabefelder),
+  // damit man mit Einsatzhandschuhen nicht daneben tippt.
+  useEffect(() => {
+    try {
+      setGloveMode(window.localStorage.getItem(GLOVE_MODE_LOCAL_KEY) === "1");
+    } catch (e) {}
+  }, []);
+
+  const toggleGloveMode = () => {
+    setGloveMode((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(GLOVE_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
+      return next;
+    });
+  };
+
+  // Nachtmodus: rein lokale Anzeige-Einstellung pro Gerät.
+  useEffect(() => {
+    try {
+      setDarkMode(window.localStorage.getItem(DARK_MODE_LOCAL_KEY) === "1");
+    } catch (e) {}
+  }, []);
+
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(DARK_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
       return next;
     });
   };
@@ -858,12 +908,14 @@ function AtemschutzUeberwachung() {
         const lastBeep = lastAlarmBeep.current[tr.id] || 0;
         if (now - lastBeep > 4000) {
           beep(1046, 0.25);
+          vibrate([300, 100, 300, 100, 300]);
           lastAlarmBeep.current[tr.id] = now;
         }
       } else if (state === "warn" && !muted[tr.id] && settings.warnSoundEnabled) {
         const lastBeep = lastWarnBeep.current[tr.id] || 0;
         if (now - lastBeep > 6000) {
           beep(660, 0.2);
+          vibrate([200, 100, 200]);
           lastWarnBeep.current[tr.id] = now;
         }
       }
@@ -872,6 +924,7 @@ function AtemschutzUeberwachung() {
         const lastDueBeep = dueBeepRef.current[dueKey] || 0;
         if (now - lastDueBeep > 6000) {
           beep(740, 0.2);
+          vibrate(150);
           dueBeepRef.current[dueKey] = now;
         }
         if (dueNotifiedRef.current[tr.id] !== dueKey) {
@@ -881,6 +934,7 @@ function AtemschutzUeberwachung() {
             "Bitte aktuellen Flaschendruck abfragen und eintragen.",
             "au-due-" + tr.id
           );
+          if (settings.speechEnabled) speak("Druckabfrage fällig für " + (tr.truppfuehrer || "Trupp"));
         }
       }
       // Benachrichtigung nur beim Wechsel in einen kritischeren Zustand auslösen
@@ -890,12 +944,14 @@ function AtemschutzUeberwachung() {
         notifiedStateRef.current[tr.id] = state;
         if (state === "alarm") {
           fireLocalNotification("🔴 Rückzug – " + (tr.truppfuehrer || "Trupp"), "Umkehrdruck (50 bar) erreicht – sofortiger Rückzug!", "au-alarm-" + tr.id);
+          if (settings.speechEnabled) speak((tr.truppfuehrer || "Trupp") + ", Umkehrdruck erreicht, sofortiger Rückzug!");
         } else if (state === "warn") {
           fireLocalNotification("🟠 Rückzugsdruck – " + (tr.truppfuehrer || "Trupp"), "Rückzugsdruck erreicht.", "au-warn-" + tr.id);
+          if (settings.speechEnabled) speak((tr.truppfuehrer || "Trupp") + ", Rückzugsdruck erreicht.");
         }
       }
     });
-  }, [now, trupps, muted, beep, computeTrupp, settings.warnSoundEnabled, settings.alarmSoundEnabled]);
+  }, [now, trupps, muted, beep, vibrate, speak, computeTrupp, settings.warnSoundEnabled, settings.alarmSoundEnabled, settings.speechEnabled]);
 
   const addTrupp = () => {
     if (!form.truppfuehrer.trim()) return;
@@ -1615,6 +1671,30 @@ function AtemschutzUeberwachung() {
               </div>
             </div>
 
+            <p className="au-modal-subtitle">Handschuh-Modus</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Vergrössert Buttons und Eingabefelder, damit die Bedienung mit Einsatzhandschuhen einfacher klappt. Gilt nur für dieses Gerät.
+            </div>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8, borderColor: gloveMode ? "#3E8E41" : undefined, color: gloveMode ? "#3E8E41" : undefined }}
+              onClick={toggleGloveMode}
+            >
+              {gloveMode ? "🧤 Handschuh-Modus AKTIV – ausschalten" : "🧤 Handschuh-Modus einschalten"}
+            </button>
+
+            <p className="au-modal-subtitle">Nachtmodus</p>
+            <div className="au-row-sub" style={{ marginBottom: 8 }}>
+              Dunkles Farbschema für Einsätze bei Nacht – blendet weniger und schont die Nachtsicht. Gilt nur für dieses Gerät.
+            </div>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8, borderColor: darkMode ? "#3E8E41" : undefined, color: darkMode ? "#3E8E41" : undefined }}
+              onClick={toggleDarkMode}
+            >
+              {darkMode ? "🌙 Nachtmodus AKTIV – ausschalten" : "🌙 Nachtmodus einschalten"}
+            </button>
+
             <p className="au-modal-subtitle">Übungsmodus</p>
             <div className="au-row-sub" style={{ marginBottom: 8 }}>
               Im Übungsmodus erfasste Trupps, Protokolle und archivierte Einsätze werden komplett getrennt von echten Einsätzen gespeichert und erscheinen nie zusammen in derselben Liste oder im selben PDF. Diese Einstellung gilt nur für dieses Gerät.
@@ -1730,6 +1810,14 @@ function AtemschutzUeberwachung() {
                 onChange={(e) => setSettings((s) => ({ ...s, alarmSoundEnabled: e.target.checked }))}
               />
               Ton bei Umkehrdruck (50 bar)
+            </label>
+            <label className="au-checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.speechEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, speechEnabled: e.target.checked }))}
+              />
+              Sprachausgabe (sagt Rückzug/Umkehrdruck laut an)
             </label>
 
             {modeTrupps.length > 0 && (
@@ -1976,6 +2064,24 @@ function AtemschutzUeberwachung() {
 
       .au-slider-value { font-size: 22px; font-weight: 700; color: #1A1D21; margin: 4px 0 8px; }
       .au-slider { width: 100%; accent-color: #3E8E41; height: 6px; }
+
+      .au-glove-mode .au-btn { padding: 18px; font-size: 17px; min-height: 54px; }
+      .au-glove-mode .au-field input,
+      .au-glove-mode .au-field select { padding: 16px 14px; font-size: 18px; min-height: 52px; }
+      .au-glove-mode .au-checkbox-row { font-size: 17px; margin: 8px 0 20px; gap: 12px; }
+      .au-glove-mode .au-checkbox-row input { width: 28px; height: 28px; }
+      .au-glove-mode .au-home { font-size: 15px; padding: 8px 0; }
+      .au-glove-mode .au-gear,
+      .au-glove-mode .au-start-gear { width: 52px; height: 52px; font-size: 22px; }
+      .au-glove-mode .au-slider { height: 12px; }
+      .au-glove-mode .au-modal-title { font-size: 19px; }
+      .au-glove-mode .au-modal-subtitle { font-size: 16px; }
+      .au-glove-mode label { font-size: 15px; }
+      .au-glove-mode .au-nextq-form { gap: 12px; }
+      .au-glove-mode .au-nextq-form input { padding: 18px 10px; font-size: 22px; min-height: 58px; }
+      .au-glove-mode .au-nextq-btn { padding: 0 20px; font-size: 15px; min-height: 58px; min-width: 96px; }
+      .au-glove-mode .au-nextq-msg { padding: 16px 14px; font-size: 16px; }
+      .au-glove-mode .au-msgs-toggle { font-size: 15px; padding: 6px; }
       .au-slider-scale { display: flex; justify-content: space-between; font-size: 11px; color: #9AA1A9; margin-top: 2px; }
 
       .au-rows { padding: 14px 18px 6px; }
@@ -2027,6 +2133,65 @@ function AtemschutzUeberwachung() {
       .au-report-table td, .au-report-table th { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
       .au-report-table td:first-child { color: #555; width: 42%; }
       .au-report-log th { background: #f0f0f0; }
+
+      /* ---- Nachtmodus ---- */
+      .au-dark-mode .au-root { background: #14171B; color: #E8EAED; }
+      .au-dark-mode .au-header { background: rgba(20,23,27,0.94); border-bottom: 1px solid #2A2F36; }
+      .au-dark-mode .au-title { color: #F5F6F7; }
+      .au-dark-mode .au-count { color: #9AA1AB; }
+      .au-dark-mode .au-home { color: #8A93A0; }
+      .au-dark-mode .au-gear { background: #262B32; color: #C7CDD3; }
+      .au-dark-mode .au-addbtn { background: #1C2026; border-color: #3A424B; color: #C7CDD3; }
+      .au-dark-mode .au-empty { color: #7A828C; }
+      .au-dark-mode .au-form,
+      .au-dark-mode .au-card,
+      .au-dark-mode .au-modal,
+      .au-dark-mode .au-donecard,
+      .au-dark-mode .au-infolist,
+      .au-dark-mode .au-msgs-log,
+      .au-dark-mode .au-info-thumb { background: #1C2026; border-color: #2A2F36; }
+      .au-dark-mode .au-card.alarm { border-color: #D9483D; }
+      .au-dark-mode .au-card.warn { border-color: #E8912D; }
+      .au-dark-mode .au-form-title,
+      .au-dark-mode .au-modal-subtitle,
+      .au-dark-mode .au-section-label { color: #9AA1AB; }
+      .au-dark-mode .au-modal-title,
+      .au-dark-mode .au-row-main,
+      .au-dark-mode .au-slider-value,
+      .au-dark-mode .au-checkbox-row,
+      .au-dark-mode .au-infolist-name,
+      .au-dark-mode .au-msgs-entry,
+      .au-dark-mode .au-msgs-text { color: #E8EAED; }
+      .au-dark-mode .au-row-sub,
+      .au-dark-mode .au-gauge-caption,
+      .au-dark-mode .au-gauge-thresh,
+      .au-dark-mode .au-slider-scale,
+      .au-dark-mode .au-info-thumb-name,
+      .au-dark-mode .au-msgs-pressure { color: #8A93A0; }
+      .au-dark-mode .au-row,
+      .au-dark-mode .au-infolist-row,
+      .au-dark-mode .au-msgs-entry { border-bottom-color: #2A2F36; }
+      .au-dark-mode .au-editform { border-top-color: #2A2F36; }
+      .au-dark-mode .au-field input,
+      .au-dark-mode .au-field select,
+      .au-dark-mode .au-nextq-msg,
+      .au-dark-mode .au-msgs-editrow input,
+      .au-dark-mode .au-infolist-nameinput { background: #262B32; border-color: #3A424B; color: #E8EAED; }
+      .au-dark-mode .au-btn-ghost { background: #262B32; color: #C7CDD3; }
+      .au-dark-mode .au-chip { background: #262B32; border-color: #3A424B; color: #C7CDD3; }
+      .au-dark-mode .au-donecard-btn { background: #262B32; border-color: #3A424B; color: #C7CDD3; }
+      .au-dark-mode .au-nextq { background: #1B2B3A; }
+      .au-dark-mode .au-nextq-label { color: #6FA8DC; }
+      .au-dark-mode .au-nextq-time { color: #9FCBE8; }
+      .au-dark-mode .au-nextq-form input { background: #262B32; border-color: #2E4B63; color: #E8EAED; }
+      .au-dark-mode .au-nextq-btn { background: #262B32; border-color: #2E4B63; color: #9FCBE8; }
+      .au-dark-mode .au-nextq-msg { border-color: #2E4B63; }
+      .au-dark-mode .au-msgs-toggle,
+      .au-dark-mode .au-msgs-time,
+      .au-dark-mode .au-nextq-lastmsg { color: #6FA8DC; }
+      .au-dark-mode .au-info-thumb-media { background: #262B32; }
+      .au-dark-mode .au-gps-btn { background: #262B32; border-color: #3A424B; color: #C7CDD3; }
+      .au-dark-mode .au-gps-status { color: #8A93A0; }
     `}</style>
   );
 
@@ -2036,7 +2201,7 @@ function AtemschutzUeberwachung() {
 
   if (screen === "start") {
     return (
-      <div className="au-app au-start-root">
+      <div className={`au-app au-start-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
         <div className="au-start-admin-wrap">
@@ -2126,7 +2291,7 @@ function AtemschutzUeberwachung() {
     const viewingEinsatz = einsaetze.find((e) => e.id === viewingEinsatzId);
     const modeEinsaetze = einsaetze.filter((e) => !!e.isTraining === trainingMode);
     return (
-      <div className="au-app au-root">
+      <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
         <div className="au-header">
@@ -2214,7 +2379,7 @@ function AtemschutzUeberwachung() {
   }
 
   return (
-    <div className="au-app au-root">
+    <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
       {styleBlock}
       {trainingChip}
       {globalAlertLevel && <div className={`au-alert-overlay ${globalAlertLevel}`} />}
@@ -2228,6 +2393,7 @@ function AtemschutzUeberwachung() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="au-gear" onClick={toggleDarkMode} aria-label="Nachtmodus">{darkMode ? "☀️" : "🌙"}</button>
           <button className="au-gear" onClick={() => setShowInfoLibrary(true)} aria-label="Atemschutz-Infos">📎</button>
         </div>
       </div>
