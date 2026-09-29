@@ -340,6 +340,21 @@ function useBeeper() {
   return beep;
 }
 
+// Ermittelt alle Namen, die aktuell einem anderen (nicht abgeschlossenen) Trupp im selben Modus
+// (Übung/echt) zugeteilt sind, damit niemand versehentlich doppelt eingeteilt wird.
+function getAssignedElsewhere(allTrupps, trainingMode, excludeId) {
+  const names = new Set();
+  allTrupps.forEach((t) => {
+    if (t.id === excludeId) return;
+    if (t.status === "done") return;
+    if (!!t.isTraining !== trainingMode) return;
+    [t.truppfuehrer, t.truppueberwacher, t.adf1, t.adf2, t.adf3].forEach((n) => {
+      if (n && n.trim()) names.add(n.trim().toLowerCase());
+    });
+  });
+  return names;
+}
+
 // Shared calculation logic reused by the on-screen/print report AND the PDF share export.
 // Baut die chronologische Liste der Auftrags-Protokolle: jeder Auftrag bekommt sein eigenes,
 // vollständig erhaltenes Protokoll (keine Archivierung/Ausblendung) mit klarem Status – abgeschlossene
@@ -359,6 +374,7 @@ function getAuftragSegments(tr) {
     seilfarbe: tr.seilfarbe,
     auftrag: tr.auftrag,
     einsatzort: tr.einsatzort,
+    bemerkung: tr.bemerkung,
     startTime: tr.startTime,
     endTime: tr.endTime,
     zielErreichtTime: tr.zielErreichtTime,
@@ -412,8 +428,6 @@ function TruppReport({ tr, verbrauchFallback }) {
               </div>
               <div style={{ flex: 1 }}>
                 <div className="au-report-title">Atemschutzüberwachungs­protokoll{tr.isTraining ? " – ÜBUNG" : ""}</div>
-                {(seg.strasse || seg.ort) && <div className="au-report-einsatzort">{[seg.strasse, seg.ort].filter(Boolean).join(", ")}</div>}
-                {seg.einsatzort && <div className="au-report-einsatzort">{seg.einsatzort}</div>}
               </div>
               <div style={{ textAlign: "right" }}>
                 {segLabel && <div className="au-report-segkicker">{segLabel}</div>}
@@ -422,7 +436,6 @@ function TruppReport({ tr, verbrauchFallback }) {
             </div>
             {seg.truppfuehrer && <div className="au-report-sub">Truppführer: {seg.truppfuehrer}</div>}
             {stats.members.length > 0 && <div className="au-report-sub">Mannschaft: {stats.members.join(", ")}</div>}
-            {seg.truppueberwacher && <div className="au-report-sub">Truppüberwacher: {seg.truppueberwacher}</div>}
             <table className="au-report-table">
               <tbody>
                 <tr><td>Strasse</td><td>{seg.strasse || "–"}</td></tr>
@@ -431,7 +444,8 @@ function TruppReport({ tr, verbrauchFallback }) {
                 <tr><td>Auftrag</td><td>{seg.auftrag || "–"}</td></tr>
                 <tr><td>Funkkanal</td><td>{seg.funkkanal || "–"}</td></tr>
                 <tr><td>Seilfarbe</td><td>{seg.seilfarbe || "–"}</td></tr>
-                <tr><td>Einstiegsdruck</td><td>{seg.einstiegsdruck} bar</td></tr>
+                <tr><td>Einstiegsdruck</td><td>{seg.einstiegsdruck != null ? `${seg.einstiegsdruck} bar` : "–"}</td></tr>
+                {seg.bemerkung && <tr><td>Bemerkung</td><td>{seg.bemerkung}</td></tr>}
                 {seg.zielErreichtTime && seg.startTime && (
                   <tr><td>Einsatzziel erreicht</td><td>nach {((seg.zielErreichtTime - seg.startTime) / 60000).toFixed(1)} min</td></tr>
                 )}
@@ -520,7 +534,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.11";
+  const APP_VERSION = "2.19";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -529,6 +543,10 @@ function AtemschutzUeberwachung() {
   const GLOVE_MODE_LOCAL_KEY = "atemschutz_glove_mode_local";
   const [darkMode, setDarkMode] = useState(false);
   const DARK_MODE_LOCAL_KEY = "atemschutz_dark_mode_local";
+  // Einsatzleiter-Ansicht: reine Übersicht über alle Trupps, nach Dringlichkeit sortiert, ohne
+  // Bedienelemente. Bewusst nicht gespeichert – startet bei jedem Öffnen der App normal.
+  const [leitstandMode, setLeitstandMode] = useState(false);
+  const [confirmingLeitstand, setConfirmingLeitstand] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [notifyPermission, setNotifyPermission] = useState("default");
   const wakeLockRef = useRef(null);
@@ -563,6 +581,9 @@ function AtemschutzUeberwachung() {
   const [editingDocNameId, setEditingDocNameId] = useState(null);
   const [docNameEditText, setDocNameEditText] = useState("");
   const [uploadWarning, setUploadWarning] = useState("");
+  const [assignError, setAssignError] = useState("");
+  const [editAssignError, setEditAssignError] = useState("");
+  const [flaschenwechselAssignError, setFlaschenwechselAssignError] = useState("");
   const [gpsStatus, setGpsStatus] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
   const beep = useBeeper();
@@ -604,6 +625,7 @@ function AtemschutzUeberwachung() {
     auftrag: "",
     funkkanal: "3",
     seilfarbe: "",
+    bemerkung: "",
   });
 
   useEffect(() => {
@@ -961,6 +983,16 @@ function AtemschutzUeberwachung() {
 
   const addTrupp = () => {
     if (!form.truppfuehrer.trim()) return;
+    const candidateNames = [form.truppfuehrer, form.truppueberwacher, form.adf1, form.adf2, form.adf3]
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, null);
+    const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
+    if (conflicts.length > 0) {
+      setAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+      return;
+    }
+    setAssignError("");
     const t = {
       id: nextId(),
       truppfuehrer: form.truppfuehrer.trim(),
@@ -975,6 +1007,7 @@ function AtemschutzUeberwachung() {
       auftrag: form.auftrag.trim(),
       funkkanal: form.funkkanal.trim(),
       seilfarbe: form.seilfarbe.trim(),
+      bemerkung: form.bemerkung.trim(),
       startTime: null,
       status: "bereit",
       endTime: null,
@@ -984,10 +1017,11 @@ function AtemschutzUeberwachung() {
       isTraining: trainingMode,
     };
     setTrupps((prev) => [t, ...prev]);
-    setForm({
+    setForm((f) => ({
       truppfuehrer: "", truppueberwacher: "", adf1: "", adf2: "", adf3: "",
-      einstiegsdruck: 300, strasse: "", ort: "", einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "",
-    });
+      // Strasse/Ort werden für den nächsten Trupp übernommen (gleicher Einsatzort), bleiben aber änderbar.
+      einstiegsdruck: 300, strasse: f.strasse, ort: f.ort, einsatzort: "", auftrag: "", funkkanal: "3", seilfarbe: "", bemerkung: "",
+    }));
     setShowForm(false);
   };
 
@@ -1004,6 +1038,18 @@ function AtemschutzUeberwachung() {
 
   const confirmFlaschenwechsel = (id) => {
     const isNeuerAuftrag = flaschenwechselNeuerAuftrag === true;
+    if (isNeuerAuftrag) {
+      const candidateNames = [neuerAuftragForm.truppfuehrer, neuerAuftragForm.truppueberwacher, neuerAuftragForm.adf1, neuerAuftragForm.adf2, neuerAuftragForm.adf3]
+        .map((n) => n.trim())
+        .filter(Boolean);
+      const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, id);
+      const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
+      if (conflicts.length > 0) {
+        setFlaschenwechselAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+        return;
+      }
+    }
+    setFlaschenwechselAssignError("");
     const tiefsterDruck = Number(flaschenwechselPressureInput);
     const now = Date.now();
     setTrupps((prev) =>
@@ -1024,6 +1070,7 @@ function AtemschutzUeberwachung() {
             seilfarbe: t.seilfarbe,
             auftrag: t.auftrag,
             einsatzort: t.einsatzort,
+            bemerkung: t.bemerkung,
             startTime: t.startTime,
             endTime: now,
             zielErreichtTime: t.zielErreichtTime,
@@ -1047,6 +1094,7 @@ function AtemschutzUeberwachung() {
             seilfarbe: neuerAuftragForm.seilfarbe.trim(),
             auftrag: neuerAuftragForm.auftrag.trim(),
             einsatzort: neuerAuftragForm.einsatzort.trim(),
+            bemerkung: (neuerAuftragForm.bemerkung || "").trim(),
             pressureLog: [],
             auftragsProtokolle: [closedSegment, ...(t.auftragsProtokolle || [])],
           };
@@ -1118,16 +1166,29 @@ function AtemschutzUeberwachung() {
       truppfuehrer: tr.truppfuehrer, truppueberwacher: tr.truppueberwacher, adf1: tr.adf1, adf2: tr.adf2, adf3: tr.adf3,
       einstiegsdruck: tr.einstiegsdruck,
       strasse: tr.strasse, ort: tr.ort, einsatzort: tr.einsatzort, auftrag: tr.auftrag, funkkanal: tr.funkkanal, seilfarbe: tr.seilfarbe,
+      bemerkung: tr.bemerkung || "",
     });
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
   const saveEdit = (id) => {
+    const candidateNames = [editForm.truppfuehrer, editForm.truppueberwacher, editForm.adf1, editForm.adf2, editForm.adf3]
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, id);
+    const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
+    if (conflicts.length > 0) {
+      setEditAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+      return;
+    }
+    setEditAssignError("");
     setTrupps((prev) =>
       prev.map((t) => {
         if (t.id !== id) return t;
-        const newAuftrag = editForm.auftrag.trim();
-        const auftragChanged = newAuftrag !== (t.auftrag || "") && (t.pressureLog || []).length > 0;
-        const base = {
+        // Bearbeiten (z.B. Tippfehler korrigieren) ändert nur die Felder – es wird bewusst KEIN
+        // neuer Protokoll-Abschnitt angelegt (das führte früher zu doppelten, unvollständigen
+        // Auszügen im PDF). Ein echter neuer Auftrag mit sauberem, vollständigem Abschnitt läuft
+        // weiterhin gezielt über "Flaschenwechsel mit neuem Auftrag".
+        return {
           ...t,
           truppfuehrer: editForm.truppfuehrer.trim(),
           truppueberwacher: editForm.truppueberwacher.trim(),
@@ -1138,24 +1199,10 @@ function AtemschutzUeberwachung() {
           strasse: editForm.strasse.trim(),
           ort: editForm.ort.trim(),
           einsatzort: editForm.einsatzort.trim(),
-          auftrag: newAuftrag,
+          auftrag: editForm.auftrag.trim(),
           funkkanal: editForm.funkkanal.trim(),
           seilfarbe: editForm.seilfarbe.trim(),
-        };
-        if (!auftragChanged) return base;
-        // Auftrag hat sich geändert: bisheriges Protokoll abschliessen, neues (leeres) Protokoll starten.
-        const closedSegment = {
-          auftrag: t.auftrag,
-          einsatzort: t.einsatzort,
-          startTime: t.startTime,
-          endTime: Date.now(),
-          pressureLog: t.pressureLog || [],
-          status: "abgeschlossen",
-        };
-        return {
-          ...base,
-          pressureLog: [],
-          auftragsProtokolle: [closedSegment, ...(t.auftragsProtokolle || [])],
+          bemerkung: editForm.bemerkung != null ? editForm.bemerkung.trim() : t.bemerkung,
         };
       })
     );
@@ -1248,8 +1295,11 @@ function AtemschutzUeberwachung() {
     // Nur die Trupps des aktuellen Modus (echt oder Übung) werden archiviert/geleert;
     // Trupps im jeweils anderen Modus bleiben unangetastet.
     setTrupps((prev) => prev.filter((t) => !!t.isTraining !== trainingMode));
+    // Adresse zurücksetzen, damit der nächste Einsatz nicht die alte Adresse übernimmt.
+    setForm((f) => ({ ...f, strasse: "", ort: "" }));
     setConfirmingArchive(false);
     setShowSettings(false);
+    setLeitstandMode(false);
     setScreen("start");
   };
 
@@ -1459,7 +1509,8 @@ function AtemschutzUeberwachung() {
         ["Auftrag", seg.auftrag || "–"],
         ["Funkkanal", seg.funkkanal || "–"],
         ["Seilfarbe", seg.seilfarbe || "–"],
-        ["Einstiegsdruck", `${seg.einstiegsdruck} bar`],
+        ["Einstiegsdruck", seg.einstiegsdruck != null ? `${seg.einstiegsdruck} bar` : "–"],
+        ...(seg.bemerkung ? [["Bemerkung", seg.bemerkung]] : []),
         ...(seg.zielErreichtTime && seg.startTime ? [["Einsatzziel erreicht", `nach ${((seg.zielErreichtTime - seg.startTime) / 60000).toFixed(1)} min`]] : []),
         ["Rückzugsdruck (berechnet)", `${Math.round(stats.rueckzugsdruck)} bar`],
         ["Luftverbrauch (berechnet)", `${stats.verbrauch.toFixed(1)} bar/min`],
@@ -1986,6 +2037,8 @@ function AtemschutzUeberwachung() {
       .au-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 0.01em; text-transform: uppercase; margin: 0; }
       .au-count { font-size: 12px; color: #6B7280; margin-top: 2px; }
       .au-gear { background: #EEF0F2; border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #4B5563; }
+      .au-gear-leitstand { width: auto; padding: 0 14px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; background: #1A1D21; color: #fff; }
+      .au-dark-mode .au-gear-leitstand { background: #F2A93B; color: #12151A; }
       .au-body { padding: 14px; max-width: 640px; margin: 0 auto; }
       @media (min-width: 900px) {
         .au-body { max-width: 1120px; padding: 20px; }
@@ -2218,6 +2271,55 @@ function AtemschutzUeberwachung() {
       .au-dark-mode .au-info-thumb-media { background: #262B32; }
       .au-dark-mode .au-gps-btn { background: #262B32; border-color: #3A424B; color: #C7CDD3; }
       .au-dark-mode .au-gps-status { color: #8A93A0; }
+
+      .au-leitstand-overlay { position: fixed; inset: 0; z-index: 25; background: #F3F4F6; overflow-y: auto; padding: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+      .au-dark-mode .au-leitstand-overlay { background: #14171B; }
+      .au-leitstand-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+      .au-leitstand-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 0.01em; text-transform: uppercase; }
+      .au-dark-mode .au-leitstand-title { color: #E8EAED; }
+      .au-leitstand-summary { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+      .au-leitstand-stat { flex: 1; min-width: 84px; background: #fff; border: 1px solid #E4E7EB; border-radius: 12px; padding: 10px 12px; text-align: center; }
+      .au-dark-mode .au-leitstand-stat { background: #1C2026; border-color: #2A2F36; }
+      .au-leitstand-stat span:last-child { display: block; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #6B7280; margin-top: 2px; }
+      .au-dark-mode .au-leitstand-stat span:last-child { color: #8A93A0; }
+      .au-leitstand-stat-num { display: block; font-family: 'Oswald', sans-serif; font-size: 26px; font-weight: 700; }
+      .au-leitstand-stat.alarm .au-leitstand-stat-num { color: #D9483D; }
+      .au-leitstand-stat.warn .au-leitstand-stat-num { color: #E8912D; }
+      .au-leitstand-stat.safe .au-leitstand-stat-num { color: #3E8E41; }
+      .au-leitstand-stat.bereit .au-leitstand-stat-num { color: #6B7280; }
+      .au-dark-mode .au-leitstand-stat.bereit .au-leitstand-stat-num { color: #9AA1AB; }
+      .au-leitstand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+      .au-leitstand-card { background: #fff; border: 1px solid #E4E7EB; border-left: 6px solid #C7CBD1; border-radius: 12px; padding: 14px; }
+      .au-dark-mode .au-leitstand-card { background: #1C2026; border-color: #2A2F36; border-left-color: #4A5058; }
+      .au-leitstand-card.alarm { border-left-color: #D9483D; animation: au-leitstand-pulse-alarm 1.2s ease-in-out infinite; }
+      .au-leitstand-card.warn { border-left-color: #E8912D; animation: au-leitstand-pulse-warn 1.2s ease-in-out infinite; }
+      .au-leitstand-card.safe { border-left-color: #3E8E41; }
+      @keyframes au-leitstand-pulse-alarm { 0%, 49% { background: #fff; } 50%, 100% { background: #FBE1DE; } }
+      @keyframes au-leitstand-pulse-warn { 0%, 49% { background: #fff; } 50%, 100% { background: #FCEBD6; } }
+      .au-dark-mode .au-leitstand-card.alarm { animation-name: au-leitstand-pulse-alarm-dark; }
+      .au-dark-mode .au-leitstand-card.warn { animation-name: au-leitstand-pulse-warn-dark; }
+      @keyframes au-leitstand-pulse-alarm-dark { 0%, 49% { background: #1C2026; } 50%, 100% { background: #3A211F; } }
+      @keyframes au-leitstand-pulse-warn-dark { 0%, 49% { background: #1C2026; } 50%, 100% { background: #3A2E19; } }
+      .au-leitstand-card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+      .au-leitstand-card-name { font-weight: 700; font-size: 16px; }
+      .au-dark-mode .au-leitstand-card-name { color: #E8EAED; }
+      .au-leitstand-card-status { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 3px 9px; border-radius: 999px; white-space: nowrap; background: #C7CBD1; color: #1A1D21; }
+      .au-leitstand-card.alarm .au-leitstand-card-status { background: #D9483D; color: #fff; }
+      .au-leitstand-card.warn .au-leitstand-card-status { background: #E8912D; color: #fff; }
+      .au-leitstand-card.safe .au-leitstand-card-status { background: #3E8E41; color: #fff; }
+      .au-leitstand-card-members, .au-leitstand-card-location { font-size: 12.5px; color: #6B7280; margin-top: 2px; }
+      .au-dark-mode .au-leitstand-card-members, .au-dark-mode .au-leitstand-card-location { color: #9AA1AB; }
+      .au-leitstand-card-auftrag { font-size: 13px; color: #1A1D21; font-weight: 600; margin-top: 6px; }
+      .au-dark-mode .au-leitstand-card-auftrag { color: #E8EAED; }
+      .au-leitstand-card-protokoll { width: 100%; margin-top: 10px; padding: 7px; border-radius: 8px; border: 1px solid #D7DBE0; background: transparent; color: #4B5563; font-size: 12px; font-weight: 600; }
+      .au-dark-mode .au-leitstand-card-protokoll { border-color: #3A424B; color: #C7CDD3; }
+      .au-leitstand-bar-track { height: 7px; border-radius: 999px; background: #E4E7EB; margin-top: 10px; overflow: hidden; }
+      .au-dark-mode .au-leitstand-bar-track { background: #2A2F36; }
+      .au-leitstand-bar-fill { height: 100%; border-radius: 999px; background: #3E8E41; }
+      .au-leitstand-card.warn .au-leitstand-bar-fill { background: #E8912D; }
+      .au-leitstand-card.alarm .au-leitstand-bar-fill { background: #D9483D; }
+      .au-leitstand-card-pressure-label { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; font-size: 11px; color: #6B7280; margin-top: 5px; }
+      .au-dark-mode .au-leitstand-card-pressure-label { color: #8A93A0; }
     `}</style>
   );
 
@@ -2419,9 +2521,103 @@ function AtemschutzUeberwachung() {
       {styleBlock}
       {trainingChip}
       {globalAlertBanner}
+      {confirmingLeitstand && (
+        <div className="au-modal-backdrop" onClick={() => setConfirmingLeitstand(false)}>
+          <div className="au-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="au-modal-title">Einsatzleiter-Ansicht öffnen?</p>
+            <div className="au-row-sub" style={{ marginBottom: 12 }}>
+              Reine Übersicht über alle Trupps, nach Dringlichkeit sortiert. Keine Bedienung möglich (kein Einteilen, kein Flaschenwechsel).
+            </div>
+            <div className="au-formbtns">
+              <button className="au-btn au-btn-ghost" onClick={() => setConfirmingLeitstand(false)}>Abbrechen</button>
+              <button
+                className="au-btn au-btn-primary"
+                onClick={() => {
+                  setConfirmingLeitstand(false);
+                  setLeitstandMode(true);
+                }}
+              >
+                Ja, öffnen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {leitstandMode && (
+        <div className="au-leitstand-overlay">
+          <div className="au-leitstand-header">
+            <div>
+              <div className="au-leitstand-title">Einsatzleiter-Ansicht</div>
+              <div className="au-row-sub">{fmtClock(new Date(now))} · nur Übersicht, keine Bedienung</div>
+            </div>
+            <button className="au-gear" onClick={() => setLeitstandMode(false)} aria-label="Schliessen">✕</button>
+          </div>
+
+          <div className="au-leitstand-summary">
+            <div className="au-leitstand-stat alarm">
+              <span className="au-leitstand-stat-num">{sortedActiveTrupps.filter((t) => t.status !== "bereit" && computeTrupp(t).state === "alarm").length}</span>
+              <span>Alarm</span>
+            </div>
+            <div className="au-leitstand-stat warn">
+              <span className="au-leitstand-stat-num">{sortedActiveTrupps.filter((t) => t.status !== "bereit" && computeTrupp(t).state === "warn").length}</span>
+              <span>Rückzug</span>
+            </div>
+            <div className="au-leitstand-stat safe">
+              <span className="au-leitstand-stat-num">{sortedActiveTrupps.filter((t) => t.status !== "bereit" && computeTrupp(t).state === "safe").length}</span>
+              <span>Im Einsatz</span>
+            </div>
+            <div className="au-leitstand-stat bereit">
+              <span className="au-leitstand-stat-num">{sortedActiveTrupps.filter((t) => t.status === "bereit").length}</span>
+              <span>Bereit</span>
+            </div>
+          </div>
+
+          {sortedActiveTrupps.length === 0 ? (
+            <div className="au-empty">Kein Trupp im Einsatz.</div>
+          ) : (
+            <div className="au-leitstand-grid">
+              {sortedActiveTrupps.map((tr) => {
+                const { state, remaining, rueckzugsdruck } = computeTrupp(tr);
+                const members = [tr.adf1, tr.adf2, tr.adf3].filter(Boolean);
+                const statusLabel =
+                  tr.status === "bereit" ? "Bereit" : state === "alarm" ? "Sofort. Rückzug" : state === "warn" ? "Rückzug" : "Im Einsatz";
+                const pct = tr.status === "bereit" ? 100 : Math.max(0, Math.min(100, (remaining / (tr.einstiegsdruck || 300)) * 100));
+                return (
+                  <div key={tr.id} className={`au-leitstand-card ${tr.status === "bereit" ? "bereit" : state}`}>
+                    <div className="au-leitstand-card-top">
+                      <span className="au-leitstand-card-name">{tr.truppfuehrer || "–"}</span>
+                      <span className="au-leitstand-card-status">{statusLabel}</span>
+                    </div>
+                    {members.length > 0 && <div className="au-leitstand-card-members">{members.join(", ")}</div>}
+                    <div className="au-leitstand-card-location">
+                      {[[tr.strasse, tr.ort].filter(Boolean).join(", "), tr.einsatzort].filter(Boolean).join(" · ") || "–"}
+                    </div>
+                    <div className="au-leitstand-card-auftrag">{tr.auftrag || "Kein Auftrag erfasst"}</div>
+                    {tr.status !== "bereit" && (
+                      <>
+                        <div className="au-leitstand-bar-track">
+                          <div className="au-leitstand-bar-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="au-leitstand-card-pressure-label">
+                          <span>{Math.round(remaining)} bar</span>
+                          <span>Rückzug ab {Math.round(rueckzugsdruck)} bar</span>
+                          <span>Einstieg {tr.einstiegsdruck} bar</span>
+                        </div>
+                      </>
+                    )}
+                    <button className="au-leitstand-card-protokoll" onClick={() => setViewingId(tr.id)}>
+                      📋 Protokoll
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       <div className="au-header">
         <div className="au-header-left">
-          <button className="au-home" onClick={() => setScreen("start")}>← Start</button>
+          <button className="au-home" onClick={() => { setLeitstandMode(false); setScreen("start"); }}>← Start</button>
           <h1 className="au-title">Atemschutz­überwachung</h1>
           <div className="au-count">
             {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} im Einsatz · {fmtClock(new Date(now))} ·{" "}
@@ -2429,8 +2625,9 @@ function AtemschutzUeberwachung() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="au-gear" onClick={toggleDarkMode} aria-label="Nachtmodus">{darkMode ? "☀️" : "🌙"}</button>
-          <button className="au-gear" onClick={() => setShowInfoLibrary(true)} aria-label="Atemschutz-Infos">📎</button>
+          <button className="au-gear au-gear-leitstand" onClick={() => setConfirmingLeitstand(true)} aria-label="Einsatzleiter">
+            🗂️ Einsatzleiter
+          </button>
         </div>
       </div>
 
@@ -2522,8 +2719,17 @@ function AtemschutzUeberwachung() {
                 <input placeholder="z. B. Rot" value={form.seilfarbe} onChange={(e) => setForm({ ...form, seilfarbe: e.target.value })} />
               </div>
             </div>
+            <div className="au-field">
+              <label>Bemerkung</label>
+              <input placeholder="Optional" value={form.bemerkung} onChange={(e) => setForm({ ...form, bemerkung: e.target.value })} />
+            </div>
+            {assignError && (
+              <div className="au-row-sub" style={{ color: "#D9483D", fontWeight: 600, marginBottom: 8 }}>
+                ⚠️ {assignError}
+              </div>
+            )}
             <div className="au-formbtns">
-              <button className="au-btn au-btn-ghost" onClick={() => setShowForm(false)}>Abbrechen</button>
+              <button className="au-btn au-btn-ghost" onClick={() => { setShowForm(false); setAssignError(""); }}>Abbrechen</button>
               <button className="au-btn au-btn-primary" onClick={addTrupp}>Trupp einteilen</button>
             </div>
           </div>
@@ -2548,6 +2754,7 @@ function AtemschutzUeberwachung() {
                     <div className="au-row-sub" style={{ marginTop: 4 }}>{[[tr.strasse, tr.ort].filter(Boolean).join(", "), tr.einsatzort, tr.auftrag].filter(Boolean).join(" · ")}</div>
                   )}
                   <div className="au-row-sub">Einstiegsdruck {tr.einstiegsdruck} bar{tr.funkkanal ? ` · Kanal ${tr.funkkanal}` : ""}{tr.seilfarbe ? ` · Seil ${tr.seilfarbe}` : ""}</div>
+                  {tr.bemerkung && <div className="au-row-sub">📝 {tr.bemerkung}</div>}
                 </div>
 
                 {editingId === tr.id ? (
@@ -2609,8 +2816,14 @@ function AtemschutzUeberwachung() {
                       <div className="au-field"><label>Funkkanal</label><input value={editForm.funkkanal} onChange={(e) => setEditForm({ ...editForm, funkkanal: e.target.value })} /></div>
                       <div className="au-field"><label>Seilfarbe</label><input value={editForm.seilfarbe} onChange={(e) => setEditForm({ ...editForm, seilfarbe: e.target.value })} /></div>
                     </div>
+                    <div className="au-field"><label>Bemerkung</label><input placeholder="Optional" value={editForm.bemerkung || ""} onChange={(e) => setEditForm({ ...editForm, bemerkung: e.target.value })} /></div>
+                    {editAssignError && (
+                      <div className="au-row-sub" style={{ color: "#D9483D", fontWeight: 600, marginBottom: 8 }}>
+                        ⚠️ {editAssignError}
+                      </div>
+                    )}
                     <div className="au-formbtns">
-                      <button className="au-btn au-btn-ghost" onClick={cancelEdit}>Abbrechen</button>
+                      <button className="au-btn au-btn-ghost" onClick={() => { cancelEdit(); setEditAssignError(""); }}>Abbrechen</button>
                       <button className="au-btn au-btn-primary" onClick={() => saveEdit(tr.id)}>Speichern</button>
                     </div>
                   </div>
@@ -2767,8 +2980,14 @@ function AtemschutzUeberwachung() {
                     <div className="au-field"><label>Funkkanal</label><input value={editForm.funkkanal} onChange={(e) => setEditForm({ ...editForm, funkkanal: e.target.value })} /></div>
                     <div className="au-field"><label>Seilfarbe</label><input value={editForm.seilfarbe} onChange={(e) => setEditForm({ ...editForm, seilfarbe: e.target.value })} /></div>
                   </div>
+                  <div className="au-field"><label>Bemerkung</label><input placeholder="Optional" value={editForm.bemerkung || ""} onChange={(e) => setEditForm({ ...editForm, bemerkung: e.target.value })} /></div>
+                  {editAssignError && (
+                    <div className="au-row-sub" style={{ color: "#D9483D", fontWeight: 600, marginBottom: 8 }}>
+                      ⚠️ {editAssignError}
+                    </div>
+                  )}
                   <div className="au-formbtns">
-                    <button className="au-btn au-btn-ghost" onClick={cancelEdit}>Abbrechen</button>
+                    <button className="au-btn au-btn-ghost" onClick={() => { cancelEdit(); setEditAssignError(""); }}>Abbrechen</button>
                     <button className="au-btn au-btn-primary" onClick={() => saveEdit(tr.id)}>Speichern</button>
                   </div>
                 </div>
@@ -2883,6 +3102,7 @@ function AtemschutzUeberwachung() {
                           seilfarbe: tr.seilfarbe || "",
                           auftrag: "",
                           einsatzort: "",
+                          bemerkung: "",
                         }
                       : null
                   );
@@ -3090,14 +3310,28 @@ function AtemschutzUeberwachung() {
                     <input value={neuerAuftragForm.seilfarbe} onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, seilfarbe: e.target.value }))} />
                   </div>
                 </div>
+                <div className="au-field">
+                  <label>Bemerkung</label>
+                  <input
+                    value={neuerAuftragForm.bemerkung || ""}
+                    onChange={(e) => setNeuerAuftragForm((f) => ({ ...f, bemerkung: e.target.value }))}
+                    placeholder="Optional"
+                  />
+                </div>
                 <div className="au-row-sub" style={{ marginBottom: 8 }}>
                   Luftverbrauch und Rückzugsdruck werden für diesen Auftrag komplett neu berechnet, sobald Druckabfragen vorliegen.
                 </div>
               </>
             )}
 
+            {flaschenwechselAssignError && (
+              <div className="au-row-sub" style={{ color: "#D9483D", fontWeight: 600, marginBottom: 8 }}>
+                ⚠️ {flaschenwechselAssignError}
+              </div>
+            )}
+
             <div className="au-formbtns">
-              <button className="au-btn au-btn-ghost" onClick={() => setConfirmingFlaschenwechselId(null)}>Abbrechen</button>
+              <button className="au-btn au-btn-ghost" onClick={() => { setConfirmingFlaschenwechselId(null); setFlaschenwechselAssignError(""); }}>Abbrechen</button>
               <button
                 className="au-btn au-btn-primary"
                 disabled={
@@ -3123,7 +3357,6 @@ function AtemschutzUeberwachung() {
     </div>
   );
 }
-
 
 ReactDOM.createRoot(document.getElementById("root")).render(<AtemschutzUeberwachung />);
 
