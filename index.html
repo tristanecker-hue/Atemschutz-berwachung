@@ -546,13 +546,11 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.24";
+  const APP_VERSION = "2.25";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
   const TRAINING_MODE_LOCAL_KEY = "atemschutz_training_mode_local";
-  const [gloveMode, setGloveMode] = useState(false);
-  const GLOVE_MODE_LOCAL_KEY = "atemschutz_glove_mode_local";
   const [darkMode, setDarkMode] = useState(false);
   const DARK_MODE_LOCAL_KEY = "atemschutz_dark_mode_local";
   // Einsatzleiter-Ansicht: reine Übersicht über alle Trupps, nach Dringlichkeit sortiert, ohne
@@ -748,22 +746,6 @@ function AtemschutzUeberwachung() {
     setTrainingMode((prev) => {
       const next = !prev;
       try { window.localStorage.setItem(TRAINING_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
-      return next;
-    });
-  };
-
-  // Handschuh-Modus: rein lokale Anzeige-Einstellung pro Gerät (grössere Buttons/Eingabefelder),
-  // damit man mit Einsatzhandschuhen nicht daneben tippt.
-  useEffect(() => {
-    try {
-      setGloveMode(window.localStorage.getItem(GLOVE_MODE_LOCAL_KEY) === "1");
-    } catch (e) {}
-  }, []);
-
-  const toggleGloveMode = () => {
-    setGloveMode((prev) => {
-      const next = !prev;
-      try { window.localStorage.setItem(GLOVE_MODE_LOCAL_KEY, next ? "1" : "0"); } catch (e) {}
       return next;
     });
   };
@@ -1845,18 +1827,6 @@ function AtemschutzUeberwachung() {
               </div>
             </div>
 
-            <p className="au-modal-subtitle">Handschuh-Modus</p>
-            <div className="au-row-sub" style={{ marginBottom: 8 }}>
-              Vergrössert Buttons und Eingabefelder, damit die Bedienung mit Einsatzhandschuhen einfacher klappt. Gilt nur für dieses Gerät.
-            </div>
-            <button
-              className="au-btn au-btn-ghost"
-              style={{ width: "100%", marginBottom: 8, borderColor: gloveMode ? "#3E8E41" : undefined, color: gloveMode ? "#3E8E41" : undefined }}
-              onClick={toggleGloveMode}
-            >
-              {gloveMode ? "🧤 Handschuh-Modus AKTIV – ausschalten" : "🧤 Handschuh-Modus einschalten"}
-            </button>
-
             <p className="au-modal-subtitle">Nachtmodus</p>
             <div className="au-row-sub" style={{ marginBottom: 8 }}>
               Dunkles Farbschema für Einsätze bei Nacht – blendet weniger und schont die Nachtsicht. Gilt nur für dieses Gerät.
@@ -1902,15 +1872,6 @@ function AtemschutzUeberwachung() {
                 </div>
               </div>
             )}
-
-            <p className="au-modal-subtitle">Zugang</p>
-            <button
-              className="au-btn au-btn-ghost"
-              style={{ width: "100%", marginBottom: 8 }}
-              onClick={() => { try { firebase.auth().signOut(); } catch (e) {} }}
-            >
-              🔒 Abmelden
-            </button>
 
             <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
               Fertig
@@ -2128,6 +2089,13 @@ function AtemschutzUeberwachung() {
             >
               {stayLoggedIn ? "🔓 Angemeldet bleiben: AN – ausschalten" : "🔒 Angemeldet bleiben: AUS – einschalten"}
             </button>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8 }}
+              onClick={() => { try { firebase.auth().signOut(); } catch (e) {} }}
+            >
+              🚪 Jetzt abmelden
+            </button>
 
             <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowAdmin(false)}>
               Fertig
@@ -2279,23 +2247,6 @@ function AtemschutzUeberwachung() {
       .au-slider-value { font-size: 22px; font-weight: 700; color: #1A1D21; margin: 4px 0 8px; }
       .au-slider { width: 100%; accent-color: #3E8E41; height: 6px; }
 
-      .au-glove-mode .au-btn { padding: 18px; font-size: 17px; min-height: 54px; }
-      .au-glove-mode .au-field input,
-      .au-glove-mode .au-field select { padding: 16px 14px; font-size: 18px; min-height: 52px; }
-      .au-glove-mode .au-checkbox-row { font-size: 17px; margin: 8px 0 20px; gap: 12px; }
-      .au-glove-mode .au-checkbox-row input { width: 28px; height: 28px; }
-      .au-glove-mode .au-home { font-size: 15px; padding: 8px 0; }
-      .au-glove-mode .au-gear,
-      .au-glove-mode .au-start-gear { width: 52px; height: 52px; font-size: 22px; }
-      .au-glove-mode .au-slider { height: 12px; }
-      .au-glove-mode .au-modal-title { font-size: 19px; }
-      .au-glove-mode .au-modal-subtitle { font-size: 16px; }
-      .au-glove-mode label { font-size: 15px; }
-      .au-glove-mode .au-nextq-form { gap: 12px; }
-      .au-glove-mode .au-nextq-form input { padding: 18px 10px; font-size: 22px; min-height: 58px; }
-      .au-glove-mode .au-nextq-btn { padding: 0 20px; font-size: 15px; min-height: 58px; min-width: 96px; }
-      .au-glove-mode .au-nextq-msg { padding: 16px 14px; font-size: 16px; }
-      .au-glove-mode .au-msgs-toggle { font-size: 15px; padding: 6px; }
       .au-slider-scale { display: flex; justify-content: space-between; font-size: 11px; color: #9AA1A9; margin-top: 2px; }
 
       .au-rows { padding: 14px 18px 6px; }
@@ -2481,7 +2432,7 @@ function AtemschutzUeberwachung() {
 
   if (screen === "start") {
     return (
-      <div className={`au-app au-start-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
+      <div className={`au-app au-start-root${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
         {globalAlertBanner}
@@ -2572,7 +2523,7 @@ function AtemschutzUeberwachung() {
     const viewingEinsatz = einsaetze.find((e) => e.id === viewingEinsatzId);
     const modeEinsaetze = einsaetze.filter((e) => !!e.isTraining === trainingMode);
     return (
-      <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
+      <div className={`au-app au-root${darkMode ? " au-dark-mode" : ""}`}>
         {styleBlock}
         {trainingChip}
         {globalAlertBanner}
@@ -2661,7 +2612,7 @@ function AtemschutzUeberwachung() {
   }
 
   return (
-    <div className={`au-app au-root${gloveMode ? " au-glove-mode" : ""}${darkMode ? " au-dark-mode" : ""}`}>
+    <div className={`au-app au-root${darkMode ? " au-dark-mode" : ""}`}>
       {styleBlock}
       {trainingChip}
       {globalAlertBanner}
