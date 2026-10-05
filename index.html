@@ -23,6 +23,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -534,7 +535,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.21";
+  const APP_VERSION = "2.22";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -1880,6 +1881,15 @@ function AtemschutzUeberwachung() {
                 </div>
               </div>
             )}
+
+            <p className="au-modal-subtitle">Zugang</p>
+            <button
+              className="au-btn au-btn-ghost"
+              style={{ width: "100%", marginBottom: 8 }}
+              onClick={() => { try { firebase.auth().signOut(); } catch (e) {} }}
+            >
+              🔒 Abmelden
+            </button>
 
             <button className="au-btn au-btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setShowSettings(false)}>
               Fertig
@@ -3560,7 +3570,81 @@ function AtemschutzUeberwachung() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<AtemschutzUeberwachung />);
+// ---------- Zugangsschutz: ein gemeinsames Passwort für alle (Firebase Authentication) ----------
+// Hinter den Kulissen gibt es EIN Firebase-Konto (E-Mail unten). Die Nutzer sehen nur ein
+// Passwortfeld. Den eigentlichen Schutz der Daten liefern die Firestore-Sicherheitsregeln
+// (nur angemeldete Konten dürfen lesen/schreiben).
+const SHARED_LOGIN_EMAIL = "feuerwehr@atemschutz-zuchwil.app";
+
+function AuthGate() {
+  const [authState, setAuthState] = useState("loading"); // loading | out | in
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    try {
+      const unsub = firebase.auth().onAuthStateChanged((user) => setAuthState(user ? "in" : "out"));
+      return () => unsub();
+    } catch (e) {
+      setAuthState("out");
+      setError("Anmeldung nicht verfügbar (Firebase Authentication konnte nicht geladen werden).");
+    }
+  }, []);
+
+  const login = async (e) => {
+    e.preventDefault();
+    if (!password || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await firebase.auth().signInWithEmailAndPassword(SHARED_LOGIN_EMAIL, password);
+      setPassword("");
+    } catch (err) {
+      const code = err && err.code ? err.code : "";
+      if (code === "auth/network-request-failed") setError("Keine Verbindung. Für die erste Anmeldung ist Internet nötig.");
+      else if (code === "auth/too-many-requests") setError("Zu viele Versuche. Bitte kurz warten und erneut versuchen.");
+      else setError("Falsches Passwort.");
+    }
+    setBusy(false);
+  };
+
+  if (authState === "in") return <AtemschutzUeberwachung />;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#14171B", color: "#E8EAED", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', sans-serif" }}>
+      <form onSubmit={login} style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 26, textTransform: "uppercase", marginBottom: 6 }}>Atemschutzüberwachung</div>
+        <div style={{ fontSize: 13, color: "#8A93A0", marginBottom: 24 }}>Feuerwehr Zuchwil</div>
+        {authState === "loading" ? (
+          <div style={{ color: "#8A93A0" }}>Lade …</div>
+        ) : (
+          <>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              placeholder="Passwort"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{ width: "100%", boxSizing: "border-box", padding: 14, borderRadius: 11, border: "1.5px solid #3A424B", background: "#1C2026", color: "#E8EAED", fontSize: 16, marginBottom: 12 }}
+            />
+            {error && <div style={{ color: "#F0766C", fontSize: 13, marginBottom: 12 }}>{error}</div>}
+            <button
+              type="submit"
+              disabled={busy || !password}
+              style={{ width: "100%", padding: 15, borderRadius: 13, border: "none", background: "#F2A93B", color: "#12151A", fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 16, letterSpacing: "0.05em", textTransform: "uppercase", opacity: busy || !password ? 0.6 : 1 }}
+            >
+              {busy ? "Prüfe …" : "Anmelden"}
+            </button>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AuthGate />);
 
 </script>
 <script>
