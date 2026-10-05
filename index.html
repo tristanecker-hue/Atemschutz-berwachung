@@ -354,6 +354,35 @@ function markSession() {
 
 // Ermittelt alle Namen, die aktuell einem anderen (nicht abgeschlossenen) Trupp im selben Modus
 // (Übung/echt) zugeteilt sind, damit niemand versehentlich doppelt eingeteilt wird.
+// Prüft Doppeleinteilungen: Truppführer/ADF dürfen nur in einem Trupp sein. Ein Truppüberwacher darf
+// bis zu MAX_UEBERWACHT Trupps gleichzeitig überwachen, ist aber nicht gleichzeitig als TF/ADF im Einsatz.
+function getAssignConflicts(allTrupps, trainingMode, excludeId, f, maxUeb) {
+  const MAX_UEBERWACHT = Math.max(1, Number(maxUeb) || 3);
+  const low = (n) => (n || "").trim().toLowerCase();
+  const field = new Set(); // TF/ADF in anderen Trupps
+  const uebCount = {}; // Anzahl überwachter anderer Trupps
+  allTrupps.forEach((t) => {
+    if (t.id === excludeId || t.status === "done" || !!t.isTraining !== trainingMode) return;
+    [t.truppfuehrer, t.adf1, t.adf2, t.adf3].forEach((n) => { if (low(n)) field.add(low(n)); });
+    if (low(t.truppueberwacher)) uebCount[low(t.truppueberwacher)] = (uebCount[low(t.truppueberwacher)] || 0) + 1;
+  });
+  const fieldNames = [f.truppfuehrer, f.adf1, f.adf2, f.adf3].map((n) => (n || "").trim()).filter(Boolean);
+  const ueb = (f.truppueberwacher || "").trim();
+  const dup = [];
+  const seen = new Set();
+  fieldNames.forEach((n) => { if (seen.has(n.toLowerCase())) dup.push(n); seen.add(n.toLowerCase()); });
+  const busy = fieldNames.filter((n) => field.has(n.toLowerCase()) || uebCount[n.toLowerCase()]);
+  if (ueb && (field.has(low(ueb)) || seen.has(low(ueb)))) busy.push(ueb);
+  const conflicts = [...new Set(busy)];
+  if (conflicts.length > 0) {
+    return `${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`;
+  }
+  if (ueb && (uebCount[low(ueb)] || 0) >= MAX_UEBERWACHT) {
+    return `${ueb} überwacht bereits ${MAX_UEBERWACHT} Trupps (Maximum).`;
+  }
+  return "";
+}
+
 function getAssignedElsewhere(allTrupps, trainingMode, excludeId) {
   const names = new Set();
   allTrupps.forEach((t) => {
@@ -533,6 +562,7 @@ const DEFAULT_SETTINGS = {
   warnSoundEnabled: true,
   alarmSoundEnabled: true,
   speechEnabled: false,
+  maxUeberwacht: 3,
 };
 
 function AtemschutzUeberwachung() {
@@ -546,7 +576,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.26";
+  const APP_VERSION = "2.28";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -990,13 +1020,9 @@ function AtemschutzUeberwachung() {
 
   const addTrupp = () => {
     if (!form.truppfuehrer.trim()) return;
-    const candidateNames = [form.truppfuehrer, form.truppueberwacher, form.adf1, form.adf2, form.adf3]
-      .map((n) => n.trim())
-      .filter(Boolean);
-    const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, null);
-    const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
-    if (conflicts.length > 0) {
-      setAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+    const assignMsg = getAssignConflicts(trupps, trainingMode, null, form, settings.maxUeberwacht);
+    if (assignMsg) {
+      setAssignError(assignMsg);
       return;
     }
     setAssignError("");
@@ -1046,13 +1072,9 @@ function AtemschutzUeberwachung() {
   const confirmFlaschenwechsel = (id) => {
     const isNeuerAuftrag = flaschenwechselNeuerAuftrag === true;
     if (isNeuerAuftrag) {
-      const candidateNames = [neuerAuftragForm.truppfuehrer, neuerAuftragForm.truppueberwacher, neuerAuftragForm.adf1, neuerAuftragForm.adf2, neuerAuftragForm.adf3]
-        .map((n) => n.trim())
-        .filter(Boolean);
-      const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, id);
-      const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
-      if (conflicts.length > 0) {
-        setFlaschenwechselAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+      const assignMsg = getAssignConflicts(trupps, trainingMode, id, neuerAuftragForm, settings.maxUeberwacht);
+      if (assignMsg) {
+        setFlaschenwechselAssignError(assignMsg);
         return;
       }
     }
@@ -1146,13 +1168,9 @@ function AtemschutzUeberwachung() {
 
   const confirmReactivate = () => {
     const id = reactivatingId;
-    const candidateNames = [reactivateForm.truppfuehrer, reactivateForm.truppueberwacher, reactivateForm.adf1, reactivateForm.adf2, reactivateForm.adf3]
-      .map((n) => n.trim())
-      .filter(Boolean);
-    const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, id);
-    const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
-    if (conflicts.length > 0) {
-      setReactivateAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+    const assignMsg = getAssignConflicts(trupps, trainingMode, id, reactivateForm, settings.maxUeberwacht);
+    if (assignMsg) {
+      setReactivateAssignError(assignMsg);
       return;
     }
     setTrupps((prev) =>
@@ -1264,13 +1282,9 @@ function AtemschutzUeberwachung() {
   };
   const cancelEdit = () => { setEditingId(null); setEditForm(null); };
   const saveEdit = (id) => {
-    const candidateNames = [editForm.truppfuehrer, editForm.truppueberwacher, editForm.adf1, editForm.adf2, editForm.adf3]
-      .map((n) => n.trim())
-      .filter(Boolean);
-    const assignedElsewhere = getAssignedElsewhere(trupps, trainingMode, id);
-    const conflicts = [...new Set(candidateNames.filter((n) => assignedElsewhere.has(n.toLowerCase())))];
-    if (conflicts.length > 0) {
-      setEditAssignError(`${conflicts.join(", ")} ${conflicts.length === 1 ? "ist" : "sind"} bereits einem anderen Trupp zugeteilt.`);
+    const assignMsg = getAssignConflicts(trupps, trainingMode, id, editForm, settings.maxUeberwacht);
+    if (assignMsg) {
+      setEditAssignError(assignMsg);
       return;
     }
     setEditAssignError("");
@@ -1935,6 +1949,19 @@ function AtemschutzUeberwachung() {
               />
               <div className="au-row-sub" style={{ marginTop: 2 }}>
                 Wird nur verwendet, bis genug Druckabfragen für eine Berechnung pro Trupp vorliegen.
+              </div>
+            </div>
+
+            <div className="au-field">
+              <label>Max. Trupps pro Truppüberwacher</label>
+              <input
+                type="number"
+                min="1"
+                value={settings.maxUeberwacht}
+                onChange={(e) => setSettings((s) => ({ ...s, maxUeberwacht: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+              />
+              <div className="au-row-sub" style={{ marginTop: 2 }}>
+                Ein Truppüberwacher darf so viele Trupps gleichzeitig überwachen (Standard: 3).
               </div>
             </div>
 
