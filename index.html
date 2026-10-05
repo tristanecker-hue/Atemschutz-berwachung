@@ -546,7 +546,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.25";
+  const APP_VERSION = "2.26";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -3624,6 +3624,9 @@ function AuthGate() {
     <div style={{ minHeight: "100vh", boxSizing: "border-box", background: "#14171B", color: "#E8EAED", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', sans-serif" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap'); body { margin: 0; background: #14171B; }`}</style>
       <form onSubmit={login} style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
+        <div style={{ width: 170, height: 170, margin: "0 auto 24px", background: "#14171A", borderRadius: 30, padding: 14, boxSizing: "border-box", boxShadow: "0 4px 18px rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        </div>
         <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 28, lineHeight: 1.15, textTransform: "uppercase", marginBottom: 6, wordBreak: "break-word" }}>Atemschutz&shy;überwachung</div>
         <div style={{ fontSize: 13, color: "#8A93A0", marginBottom: 28 }}>Feuerwehr Zuchwil</div>
         {authState === "loading" ? (
