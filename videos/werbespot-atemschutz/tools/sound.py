@@ -11,7 +11,7 @@ import subprocess
 import numpy as np
 
 SR = 48000
-DUR = 84.0
+DUR = 87.0
 N = int(SR * DUR)
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 SFX_DIR = "/opt/node22/lib/node_modules/hyperframes/dist/skills/media-use/audio/assets/sfx"
@@ -271,7 +271,7 @@ sfx("glitch-1", 21.8, 0.55, length=0.9)
 sfx("impact-bass-1", 22.0, 0.9, length=1.4)
 
 # ------------------------------------------------------------- S4 (23-30): reveal
-add(SFXBUS, 23.05, tone(1046, 0.9, 0.35, 4.5))
+add(SFXBUS, 23.65, tone(1046, 0.9, 0.35, 4.5))
 sfx("sparkle", 23.9, 0.45, pan=0.2)
 add(music, 23.3, pad([hz(50), hz(57), hz(62), hz(65)], 6.9, 1500, 2.0, 0.8), 0.32)
 for i, tt in enumerate(np.arange(24.0, 30.0, 0.46875)):
@@ -335,7 +335,7 @@ for tt in (72.0, 72.4, 72.8, 73.2, 73.6, 74.0):
     add(music, tt, kick(0.7))
 
 # app sounds 30-68
-for tt in (30.25, 34.55, 35.55, 52.1, 53.9, 63.5):
+for tt in (30.25, 34.55, 35.55, 54.3, 55.25, 63.5):
     sfx("click", tt, 0.8)
 sfx("typing", 31.2, 0.4, length=0.8)
 sfx("typing", 33.55, 0.4, length=0.6)
@@ -351,18 +351,18 @@ sfx("key-press", 43.6, 0.6)
 sfx("click", 43.75, 0.8)
 for i in range(6):
     add(SFXBUS, 43.4 + i * 0.82, tone(1318, 0.2, 0.10, 20), 1.0, -0.4)
-for tt in (46.2, 46.7, 47.2):
+for tt in (45.0, 46.22, 47.15):
     add(SFXBUS, tt, kick(0.4, 140, 50, 0.2))
 add(SFXBUS, 48.8, noise_swell(1.2, 500, 6000, 0.25, "up"))  # timelapse
 for k in range(2):  # the app's own warn beep (660 Hz)
     add(SFXBUS, 50.0 + k * 0.28, tone(660, 0.2, 0.25, 8))
 sfx("notification", 50.05, 0.5, length=1.2)
 sfx("whoosh", 50.72, 0.7)
-for tt in (51.2, 53.4):  # radio squelch + static under the radio lines
+for tt in (51.8, 54.3):  # radio squelch + static under the radio lines
     add(SFXBUS, tt, bandpass(rng.standard_normal(int(0.9 * SR)), 300, 3000) * np.linspace(0.12, 0.05, int(0.9 * SR)), 1.0, -0.4)
     add(SFXBUS, tt + 0.9, tone(1800, 0.05, 0.1, 60), 1.0, -0.4)
 for i in range(6):
-    add(SFXBUS, 54.95 + i * 0.27, tone(988, 0.12, 0.10, 30), 1.0, -0.3 + i * 0.12)
+    add(SFXBUS, 56.0 + i * 0.15, tone(988, 0.12, 0.10, 30), 1.0, -0.3 + i * 0.12)
 sfx("whoosh-cinematic", 60.8, 0.55, length=1.3)
 sfx("whoosh", 63.75, 0.5)
 for i in range(6):
@@ -373,9 +373,9 @@ for tt in (72.0, 72.4, 72.8, 73.2, 73.6, 74.0):
 
 # ------------------------------------------------------------- 75-84: final words + end card
 for tt, ch in ((75.2, [50, 57, 62, 65]), (76.8, [46, 53, 58, 62]), (78.4, [48, 55, 60, 64])):
-    sfx("impact-bass-1", tt, 1.0, length=1.6)
-    add(music, tt, pad([hz(c) for c in ch] + [hz(ch[0] - 12)], 1.55, 2600, 0.01, 0.4, 0.006), 0.55)
-    add(music, tt, taiko(0.9))
+    sfx("impact-bass-1", tt - 0.05, 0.6, length=1.6)
+    add(music, tt - 0.05, pad([hz(c) for c in ch] + [hz(ch[0] - 12)], 1.55, 2600, 0.01, 0.4, 0.006), 0.4)
+    add(music, tt - 0.05, taiko(0.6))
 add(music, 78.4, pad([hz(38), hz(50), hz(57), hz(62), hz(66)], 1.6, 3000, 0.01, 0.3, 0.006), 0.4)
 # hard stop at 80.0 handled by the music gate below
 n = int(3.5 * SR)
@@ -384,17 +384,80 @@ swell = np.sin(2 * np.pi * hz(26) * t) * np.minimum(1, t / 1.5) * np.exp(-t * 0.
 add(SFXBUS, 80.5, swell, 0.35)
 add(SFXBUS, 80.5, tone(1046, 1.2, 0.18, 3))
 sfx("sparkle", 80.9, 0.35)
-add(SFXBUS, 82.2, noise_swell(1.2, 300, 2000, 0.18, "bell"))  # final breath
+add(SFXBUS, 85.4, noise_swell(1.2, 300, 2000, 0.18, "bell"))  # final breath
 
 # ------------------------------------------------------------- music gates (silences)
 gate = np.ones(N)
-for a, b in ((14.6, 15.0), (22.35, 23.25), (80.0, 84.0)):
+for a, b in ((14.6, 15.0), (22.35, 23.25), (80.0, 87.0)):
     ia, ib = int(a * SR), int(b * SR)
     fa = int(0.02 * SR)
     gate[ia - fa:ia] = np.minimum(gate[ia - fa:ia], np.linspace(1, 0, fa))
     gate[ia:ib] = 0
-L += music[0] * gate
-R += music[1] * gate
+# ------------------------------------------------------------- voice-over (ElevenLabs takes in assets/vo)
+# (file, global start of the file, segment start, segment end, tempo)
+VO = [
+    ("vo-01", 10.96, None, None, 1.0), ("vo-02", 13.6, None, None, 1.0), ("vo-03", 15.4, None, None, 1.0),
+    ("vo-04", 21.9, None, None, 1.0), ("vo-05", 24.4, None, None, 1.0), ("vo-06", 28.8, None, None, 1.0),
+    ("vo-07", 31.5, None, None, 1.0), ("vo-08", 32.4, None, None, 1.0), ("vo-09", 34.48, None, None, 1.0),
+    ("vo-10", 35.9, None, None, 1.0), ("vo-11", 38.2, None, None, 1.0), ("vo-12", 43.1, None, None, 1.0),
+    ("vo-13", 45.0, None, None, 1.0), ("vo-14", 48.05, None, None, 1.1), ("vo-15a", 55.3, None, None, 1.0),
+    ("funk-2", 51.85, None, None, 1.0), ("funk-3", 54.35, None, None, 1.0), ("vo-16", 58.0, None, None, 1.0), ("vo-17", 63.7, None, None, 1.0),
+    ("vo-18", 70.72, None, None, 1.0),
+    ("vo-19", 75.13, 0.0, 1.1, 1.0), ("vo-19", 76.77, 1.2, 2.45, 1.0), ("vo-19", 78.36, 2.55, 4.75, 1.0),
+    ("vo-20", 80.76, None, None, 1.0),
+]
+VO.append(("funk-1", 0.05, None, None, 1.0))
+VO_TARGET = -16.0
+
+
+def measure_lufs(path):
+    out = subprocess.run(["ffmpeg", "-nostats", "-i", path, "-af", "ebur128", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    vals = [ln.split()[1] for ln in out.splitlines() if ln.strip().startswith("I:")]
+    return float(vals[-1]) if vals else -20.0
+
+
+vo_bus = [np.zeros(N), np.zeros(N)]
+for name, start, a, b, tempo in VO:
+    path = os.path.join(ROOT, "assets", "vo", name + ".mp3")
+    gain_db = VO_TARGET - measure_lufs(path)
+    chain = "highpass=f=85,acompressor=threshold=-22dB:ratio=3:attack=5:release=120:makeup=1"
+    if name.startswith("funk"):
+        chain = "highpass=f=300,lowpass=f=3000,acrusher=bits=10:mix=0.25,acompressor=threshold=-25dB:ratio=6"
+    if tempo != 1.0:
+        chain += f",atempo={tempo}"
+    chain += f",volume={gain_db:.2f}dB"
+    cmd = ["ffmpeg", "-v", "error"]
+    if a is not None:
+        cmd += ["-ss", str(a), "-t", str(b - a)]
+    cmd += ["-i", path, "-af", chain, "-f", "f32le", "-ac", "1", "-ar", str(SR), "-"]
+    raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+    v = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
+    fade = min(len(v), int(0.012 * SR))
+    v[:fade] *= np.linspace(0, 1, fade)
+    v[-fade:] *= np.linspace(1, 0, fade)
+    if name.startswith("funk"):
+        v = v * 0.7 + bandpass(rng.standard_normal(len(v)), 300, 3000) * 0.02
+    add(vo_bus, start, v, 1.0)
+
+# sidechain ducking: music down ~8 dB, sound design down ~4 dB while the voice speaks
+env = np.abs(vo_bus[0]) + np.abs(vo_bus[1])
+k = int(0.03 * SR)
+env = np.convolve(env, np.ones(k) / k, mode="same")
+env = np.minimum(1.0, env / (np.percentile(env[env > 1e-4], 60) + 1e-9))
+rel = np.exp(-1 / (0.35 * SR))
+duck = np.empty(N)
+acc = 0.0
+for i in range(0, N, 64):  # attack instantly, release over ~350 ms (block-wise for speed)
+    target = env[i:i + 64].max()
+    acc = target if target > acc else acc * rel ** 64
+    duck[i:i + 64] = acc
+L *= 1 - 0.6 * duck
+R *= 1 - 0.6 * duck
+L += music[0] * gate * (1 - 0.82 * duck)
+R += music[1] * gate * (1 - 0.82 * duck)
+L += vo_bus[0] * 2.6
+R += vo_bus[1] * 2.6
 
 # ------------------------------------------------------------- master
 mix = np.stack([L, R], axis=1)
