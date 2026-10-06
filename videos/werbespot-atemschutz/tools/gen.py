@@ -53,6 +53,7 @@ COMMON_CSS = """
 #%ID% .lbl { font-family:'IBM Plex Mono', monospace; font-size:20px; letter-spacing:0.14em;
   text-transform:uppercase; color:%MUTED%; }
 #%ID% .ch { display:inline-block; }
+#%ID% .vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 #%ID% .ripple { position:absolute; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%;
   border:4px solid rgba(255,255,255,0.9); opacity:0; }
 """
@@ -420,13 +421,10 @@ def s02():
 <div class="shot" id="%ID%-c3"><div class="full" style="display:flex;align-items:center;justify-content:center"><div class="ico" id="%ID%-mk">{icon('mask', sid)}</div></div>{slate("S2.4", "Trupp schliesst Masken · Reissverschluss, Ventil")}</div>
 <div class="shot" id="%ID%-c4"><svg class="full" viewBox="0 0 1920 1080"><path id="%ID%-rope" d="M-40 900 C 400 700, 700 1000, 1000 760 S 1600 520, 1980 640"
   fill="none" stroke="{C['red']}" stroke-width="22" stroke-linecap="round" style="stroke-dasharray:2600;stroke-dashoffset:2600"/></svg>{slate("S2.5", "Seil wird ausgelegt · Seilfarbe rot")}</div>
-<div class="shot" id="%ID%-c5"><div class="full" style="display:flex;align-items:center;justify-content:center"><div class="ico" id="%ID%-hl">{icon('helmet', sid)}</div></div>{slate("S2.6", "Truppführer nickt")}</div>
+<div class="shot" id="%ID%-c5"><div class="full" id="%ID%-hl"><video id="%ID%-v-maske" class="clip vid" data-hf-media-start-basis="local" src="assets/footage/maske.mp4" muted playsinline data-start="3.5" data-duration="0.5" data-track-index="3"></video></div></div>
 <div class="shot" id="%ID%-go">
-  <div class="full" style="background:radial-gradient(ellipse at 50% 46%, rgba(255,140,50,0.55), rgba(40,20,10,0.2) 40%, rgba(0,0,0,0) 70%)"></div>
-  <div id="%ID%-beams" class="full">{''.join(f'<div class="beam" style="left:{x}px;transform:rotate({r}deg)"></div>' for x, r in ((780, -14), (930, 6), (1080, 18)))}</div>
-  <div id="%ID%-crew" class="full">{person(720, 1.15)}{person(880, 1.25)}{person(1040, 1.1)}</div>
-  <div id="%ID%-sm2">{smoke(10, 23, 300, 1600, 200, 900, 500, 900)}</div>
-  {slate("S2.7", "Steadicam folgt dem Trupp in den Rauch · Lampenkegel volumetrisch")}
+  <div id="%ID%-crew" class="full"><video id="%ID%-v-tuer" class="clip vid" data-hf-media-start-basis="local" src="assets/footage/trupp-tuer.mp4" muted playsinline data-start="4.0" data-duration="3.0" data-track-index="3"></video></div>
+  <div id="%ID%-sm2" style="opacity:.5">{smoke(6, 23, 300, 1600, 500, 1000, 500, 900)}</div>
 </div>
 </div>
 <div class="flash" id="%ID%-fl"></div>
@@ -452,12 +450,11 @@ tl.fromTo("#%ID%-door",{rotationY:0,transformPerspective:1600},{rotationY:-70,du
 tl.fromTo("#%ID%-c2 .rip",{scale:0.2,opacity:1},{scale:1.3,opacity:0,duration:0.5,stagger:0.08,ease:"power1.out"},2.0);
 tl.fromTo("#%ID%-mk",{scale:1.15,rotation:-4},{scale:1.0,rotation:0,duration:0.5,ease:"power3.out"},2.5);
 tl.fromTo("#%ID%-rope",{strokeDashoffset:2600},{strokeDashoffset:0,duration:0.5,ease:"power2.out"},3.0);
-tl.fromTo("#%ID%-hl",{rotation:0,y:0},{keyframes:[{rotation:6,y:24,duration:0.2},{rotation:0,y:0,duration:0.25}]},3.55);
+tl.fromTo("#%ID%-hl",{scale:1.12},{scale:1.02,duration:0.5,ease:"power2.out"},3.5);
 // walk into smoke
-tl.fromTo("#%ID%-crew",{scale:1.25,y:120,transformOrigin:"50% 100%"},{scale:0.62,y:-60,duration:2.6,ease:"none"},4.0);
-tl.fromTo("#%ID%-beams",{opacity:0.4},{opacity:1,duration:2.6,ease:"none"},4.0);
+tl.fromTo("#%ID%-crew",{scale:1.0},{scale:1.12,duration:2.6,ease:"none"},4.0);
 smokeDrift(tl,"#%ID%-sm2 .smoke",3,9);
-tl.fromTo("#%ID%-sm2",{opacity:0.6},{opacity:1,duration:2.6},4.0);
+tl.fromTo("#%ID%-sm2",{opacity:0.3},{opacity:0.6,duration:2.6},4.0);
 // freeze at 6.6: desaturate + vignette closes
 tl.to("#%ID%-w",{filter:"grayscale(0.9) brightness(0.55)",duration:0.12,ease:"none"},6.6);
 tl.fromTo("#%ID%-vig",{opacity:0},{opacity:1,duration:0.4,ease:"power2.in"},6.6);
@@ -1004,11 +1001,10 @@ def s11():
     sid, dur = "s11-finale", 7
     html = f'''
 <div class="shot" id="%ID%-a" style="opacity:1">
- <div class="full" style="background:radial-gradient(ellipse at 50% 60%, rgba(120,170,255,0.75), rgba(40,80,220,0.25) 30%, rgba(0,0,0,0) 65%)" id="%ID%-back"></div>
- <div id="%ID%-sm">{smoke(10, 51, 200, 1700, 300, 900, 500, 900)}</div>
- <div id="%ID%-crew" class="full">{person(640, 1.5)}{person(860, 1.65)}{person(1080, 1.45)}</div>
- {sparks(30, 52, 300, 1600, 900)}
- {slate("S11.1", "Zeitlupe 25 % · Atemschutztrupp kommt aus dem Rauch, Gegenlicht")}
+ <div id="%ID%-crew" class="full"><video id="%ID%-v-raus" class="clip vid" data-hf-media-start-basis="local" src="assets/footage/trupp-raus.mp4" muted playsinline data-start="0" data-duration="2.2" data-track-index="3"></video></div>
+ <div class="full" style="background:radial-gradient(ellipse at 50% 30%, rgba(120,170,255,0.30), rgba(0,0,0,0) 55%)" id="%ID%-back"></div>
+ <div id="%ID%-sm" style="opacity:.45">{smoke(6, 51, 200, 1700, 500, 1000, 500, 900)}</div>
+ {sparks(18, 52, 300, 1600, 900)}
 </div>
 <div class="shot" id="%ID%-b">
  <div class="full" style="background:radial-gradient(ellipse at 60% 50%, rgba(61,123,255,0.3), rgba(0,0,0,0) 60%)"></div>
@@ -1026,7 +1022,7 @@ def s11():
  {slate("S11.2", "Einsatzleiter schaut auf das Tablet · Gesicht vom Display beleuchtet")}
 </div>
 <div class="shot" id="%ID%-c1"><div class="blue" style="left:360px;top:-160px;width:1200px;height:1200px"></div>{slate("S11.3", "Blaulicht · Zeitlupe")}</div>
-<div class="shot" id="%ID%-c2">{smoke(8, 53, 200, 1700, 200, 900, 600, 1000)}{slate("S11.4", "Rauch · Zeitlupe")}</div>
+<div class="shot" id="%ID%-c2"><video id="%ID%-v-lampe" class="clip vid" data-hf-media-start-basis="local" src="assets/footage/lampe.mp4" muted playsinline data-start="4.4" data-duration="0.4" data-track-index="3"></video>{smoke(5, 53, 200, 1700, 200, 900, 600, 1000)}</div>
 <div class="shot" id="%ID%-c3"><div class="full" style="display:flex;align-items:center;justify-content:center"><div class="ico">{icon('truck', sid).replace(sid + '-bar', sid + '-bar2')}</div></div>{slate("S11.5", "Fahrzeug")}</div>
 <div class="shot" id="%ID%-c4"><div class="full" style="display:flex;align-items:center;justify-content:center"><div style="width:560px;height:560px">{gauge_svg('%ID%-g', 560).replace('%ID%', sid)}</div></div>{slate("S11.6", "Atemschutzgerät")}</div>
 <div class="shot" id="%ID%-c5"><div class="full" style="display:flex;align-items:center;justify-content:center"><div class="ico" id="%ID%-hel">{icon('helmet', sid)}</div></div>{slate("S11.7", "Helm")}</div>
@@ -1037,8 +1033,8 @@ def s11():
 <div class="lb t"></div><div class="lb b"></div>'''
     js = """
 tl.fromTo("#%ID%-a",{opacity:0},{opacity:1,duration:0.4},0);
-tl.fromTo("#%ID%-crew",{scale:0.8,y:60,transformOrigin:"50% 100%"},{scale:1.0,y:0,duration:2.2,ease:"none"},0);
-tl.fromTo("#%ID%-back",{opacity:0.6},{opacity:1,duration:1.1,yoyo:true,repeat:1,ease:"sine.inOut"},0);
+tl.fromTo("#%ID%-crew",{scale:1.0},{scale:1.1,duration:2.2,ease:"none"},0);
+tl.fromTo("#%ID%-back",{opacity:0.4},{opacity:1,duration:1.1,yoyo:true,repeat:1,ease:"sine.inOut"},0);
 smokeDrift(tl,"#%ID%-sm .smoke",2.2,3);
 sparkLoop(tl,"#%ID%-a .spark",2.2,13);
 var cuts=[["#%ID%-a",0,2.2],["#%ID%-b",2.2,4.0],["#%ID%-c1",4.0,4.4],["#%ID%-c2",4.4,4.8],["#%ID%-c3",4.8,5.2],["#%ID%-c4",5.2,5.6],["#%ID%-c5",5.6,6.0],["#%ID%-c6",6.0,6.6]];
