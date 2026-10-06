@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="de">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+#s09-split { position:absolute; inset:0; overflow:hidden; background:#07090C; color:#E4E7EB;
+  font-family:Inter, sans-serif; }
+#s09-split .full { position:absolute; inset:0; }
+#s09-split .mono { font-family:'IBM Plex Mono', monospace; }
+#s09-split .osw { font-family:Oswald, sans-serif; }
+#s09-split .slate { position:absolute; left:64px; bottom:56px; font-family:'IBM Plex Mono', monospace;
+  font-size:20px; letter-spacing:0.08em; color:#C7CDD3; display:flex; gap:16px; align-items:center; z-index:50; }
+#s09-split .slate b { color:#07090C; background:#E4E7EB; padding:4px 10px; font-weight:600; }
+#s09-split .lb { position:absolute; left:0; right:0; height:120px; background:#000; z-index:40; }
+#s09-split .lb.t { top:0; } #s09-split .lb.b { bottom:0; }
+#s09-split .drop { position:absolute; width:2px; border-radius:2px;
+  background:linear-gradient(180deg, rgba(180,200,255,0), rgba(190,210,255,0.55)); }
+#s09-split .spark { position:absolute; width:6px; height:6px; border-radius:50%;
+  background:#FFB765; box-shadow:0 0 12px 4px rgba(255,140,40,0.7); }
+#s09-split .smoke { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(120,128,140,0.55) 0%, rgba(70,76,86,0.25) 45%, rgba(0,0,0,0) 70%); }
+#s09-split .blue { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(61,123,255,0.85) 0%, rgba(40,80,220,0.35) 35%, rgba(0,0,0,0) 70%); }
+#s09-split .shot { position:absolute; inset:0; opacity:0; }
+#s09-split .flash { position:absolute; inset:0; background:#DCE6FF; opacity:0; z-index:45; }
+#s09-split .ico { filter: drop-shadow(0 0 18px rgba(61,123,255,0.65)); }
+#s09-split .big { font-family:Oswald, sans-serif; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.01em; line-height:0.95; }
+#s09-split .card { background:#1A1D21; border:3px solid #262B32; border-radius:28px; }
+#s09-split .chip { display:inline-flex; align-items:center; padding:14px 26px; border-radius:999px;
+  border:3px solid #3A424B; font-size:26px; font-weight:600; color:#E4E7EB; background:#12151A; }
+#s09-split .btnp { display:flex; align-items:center; justify-content:center; border-radius:20px;
+  background:#D9483D; color:#fff; font-weight:700; font-size:30px; letter-spacing:0.02em; }
+#s09-split .lbl { font-family:'IBM Plex Mono', monospace; font-size:20px; letter-spacing:0.14em;
+  text-transform:uppercase; color:#9AA1A9; }
+#s09-split .ch { display:inline-block; }
+#s09-split .ripple { position:absolute; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%;
+  border:4px solid rgba(255,255,255,0.9); opacity:0; }
+
+#s09-split .acard { position:absolute; width:1180px; padding:40px 44px; background:#1A1D21; border:3px solid #262B32;
+  border-radius:32px; box-shadow:0 40px 120px rgba(0,0,0,0.6); }
+#s09-split .acard.warn { border-color:#E8912D; }
+#s09-split .ahead { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+#s09-split .aname { font-family:Oswald, sans-serif; font-size:52px; font-weight:700; }
+#s09-split .astatus { font-family:'IBM Plex Mono', monospace; font-size:24px; font-weight:600; padding:10px 22px;
+  border-radius:999px; color:#fff; background:#3E8E41; }
+#s09-split .agrid { display:flex; gap:44px; }
+#s09-split .agauge { position:relative; width:380px; display:flex; flex-direction:column; align-items:center; }
+#s09-split .agval { position:absolute; top:104px; left:0; right:0; text-align:center; font-family:Oswald, sans-serif;
+  font-size:104px; font-weight:700; line-height:1; }
+#s09-split .agunit { position:absolute; top:250px; left:0; right:0; text-align:center; font-size:24px; color:#9AA1A9; }
+#s09-split .athr { font-family:'IBM Plex Mono', monospace; font-size:21px; color:#9AA1A9; text-align:center; margin-top:8px; }
+#s09-split .aside { flex:1; display:flex; flex-direction:column; gap:20px; }
+#s09-split .anext { background:#12151A; border:3px solid #262B32; border-radius:22px; padding:22px 26px; }
+#s09-split .anext .t { font-family:'IBM Plex Mono', monospace; font-size:64px; font-weight:600; line-height:1.05; }
+#s09-split .ainp { display:flex; gap:14px; margin-top:14px; }
+#s09-split .ainp .f { flex:1; border:3px solid #3A424B; border-radius:16px; padding:14px 18px; font-size:28px; color:#9AA1A9; }
+#s09-split .ainp .f.on { color:#E4E7EB; border-color:#E4E7EB; }
+#s09-split .ainp .b { border-radius:16px; padding:14px 22px; font-weight:700; font-size:26px; background:#D9483D; color:#fff;
+  font-family:'IBM Plex Mono', monospace; letter-spacing:0.06em; }
+#s09-split .arow { display:flex; gap:18px; align-items:flex-start; }
+#s09-split .arow .m { font-size:30px; font-weight:600; }
+#s09-split .arow .s { font-size:23px; color:#9AA1A9; margin-top:2px; }
+#s09-split .aacts { display:flex; gap:16px; margin-top:26px; }
+
+#s09-split .note { position:absolute; font-size:34px; color:#FFE2B8; background:rgba(40,28,16,0.85); padding:6px 14px; opacity:0;
+  text-decoration:line-through; text-decoration-color:rgba(217,72,61,0.9); }
+</style>
+      <div id="s09-split" data-composition-id="s09-split" data-width="1920" data-height="1080" data-duration="6">
+
+<div class="full" style="background:#12151A"></div>
+<div id="s09-split-L" style="position:absolute;left:0;top:0;width:960px;height:1080px;overflow:hidden;
+  background:radial-gradient(ellipse at 40% 50%, rgba(232,145,45,0.28), rgba(30,22,14,0.9) 70%)">
+ <div id="s09-split-Lin" class="full" data-layout-allow-overlap data-layout-allow-occlusion>
+  <div style="position:absolute;left:120px;top:250px"><svg viewBox="0 0 300 400" width="330" height="440"><g fill="none" stroke="#E4E7EB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><rect x="30" y="40" width="240" height="340" rx="14"/>
+<rect x="105" y="20" width="90" height="40" rx="10"/><path d="M60 110h180M60 160h150M60 210h170M60 260h120M60 310h160" stroke-width="4"/></g></svg></div>
+  <div style="position:absolute;left:520px;top:520px"><svg viewBox="0 0 200 280" width="220" height="308"><g fill="none" stroke="#E4E7EB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="20" width="160" height="240" rx="18"/>
+<rect x="44" y="44" width="112" height="50" rx="6"/><path d="M50 130h20M90 130h20M130 130h20M50 170h20M90 170h20M130 170h20M50 210h20M90 210h20M130 210h20"/></g></svg></div>
+  <div style="position:absolute;left:560px;top:180px"><svg viewBox="0 0 200 260" width="190" height="247"><g fill="none" stroke="#E4E7EB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><rect x="60" y="10" width="80" height="50" rx="10"/>
+<rect x="60" y="200" width="80" height="50" rx="10"/><circle cx="100" cy="130" r="74"/><path d="M100 130 L100 82 M100 130 L136 150"/></g></svg></div>
+  <div style="position:absolute;left:300px;top:640px;transform:scale(0.5);transform-origin:0 0"><svg viewBox="0 0 300 460" width="400" height="610"><g fill="none" stroke="#E4E7EB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+<rect x="60" y="120" width="180" height="320" rx="26"/><path d="M90 120 L90 20"/><rect x="80" y="150" width="140" height="70" rx="8"/>
+<path d="M100 260 h100 M100 290 h100 M100 320 h100 M100 350 h100"/><path d="M240 230 h22 v70 h-22" stroke="#D9483D"/></g>
+<circle id="s09-split-led" cx="200" cy="395" r="12" fill="#D9483D" opacity="0.2"/></svg></div>
+  <div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:238px;top:320px;transform:rotate(-8.0deg)">300 − 230 = ?</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:515px;top:546px;transform:rotate(4.6deg)">70 : 10 = 7?</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:328px;top:419px;transform:rotate(5.6deg)">14:22 ?</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:340px;top:678px;transform:rotate(3.9deg)">Rückzug ??</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:476px;top:456px;transform:rotate(-8.3deg)">9,6 × 7 × 1,1</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:118px;top:640px;transform:rotate(-8.0deg)">Kanal 3 / 5 ?</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:380px;top:574px;transform:rotate(-10.6deg)">Müller 160?</div><div class="note mono" data-layout-allow-overlap data-layout-allow-occlusion style="left:448px;top:191px;transform:rotate(8.8deg)">Ziel 14:21?</div></div>
+ <div class="lbl" style="position:absolute;left:60px;top:60px;font-size:28px;color:#E4E7EB">FRÜHER</div>
+ <div class="slate" style="top:110px;bottom:auto"><b>PLATZHALTER S9</b><span>Klemmbrett im Regen, Stift, Rechner</span></div>
+</div>
+<div id="s09-split-div" style="position:absolute;left:957px;top:0;width:6px;height:1080px;background:#E4E7EB;z-index:5"></div>
+<div id="s09-split-R" style="position:absolute;left:960px;top:0;width:960px;height:1080px;overflow:hidden">
+ <div id="s09-split-Rin" style="position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 50%">
+  <div class="lbl" style="position:absolute;left:60px;top:60px;font-size:28px;color:#E4E7EB">HEUTE</div>
+  <div style="position:absolute;left:60px;top:180px;display:flex;gap:22px">
+   <div class="card" style="width:190px;padding:20px;border-color:#D9483D"><div class="osw" style="font-size:72px;font-weight:700;color:#D9483D;line-height:1">0</div><div style="font-size:24px;font-weight:600">Alarm</div></div><div class="card" style="width:190px;padding:20px;border-color:#E8912D"><div class="osw" style="font-size:72px;font-weight:700;color:#E8912D;line-height:1">0</div><div style="font-size:24px;font-weight:600">Rückzug</div></div><div class="card" style="width:190px;padding:20px;border-color:#3E8E41"><div class="osw" style="font-size:72px;font-weight:700;color:#3E8E41;line-height:1">2</div><div style="font-size:24px;font-weight:600">Im Einsatz</div></div><div class="card" style="width:190px;padding:20px;border-color:#8B95A1"><div class="osw" style="font-size:72px;font-weight:700;color:#8B95A1;line-height:1">1</div><div style="font-size:24px;font-weight:600">Bereit</div></div></div>
+  <div class="card" style="position:absolute;left:60px;top:400px;width:836px;padding:24px 30px;border-color:#3E8E41">
+   <div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:40px;font-weight:700">Müller</div><div class="mono" style="font-size:24px;color:#3E8E41">202 bar · Im Einsatz</div></div>
+   <div style="margin-top:16px;height:14px;border-radius:7px;background:#262B32"><div style="height:14px;border-radius:7px;width:67%;background:#3E8E41"></div></div></div><div class="card" style="position:absolute;left:60px;top:590px;width:836px;padding:24px 30px;border-color:#3E8E41">
+   <div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:40px;font-weight:700">Frei</div><div class="mono" style="font-size:24px;color:#3E8E41">251 bar · Im Einsatz</div></div>
+   <div style="margin-top:16px;height:14px;border-radius:7px;background:#262B32"><div style="height:14px;border-radius:7px;width:84%;background:#3E8E41"></div></div></div><div class="card" style="position:absolute;left:60px;top:780px;width:836px;padding:24px 30px;border-color:#8B95A1">
+   <div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:40px;font-weight:700">Schaad</div><div class="mono" style="font-size:24px;color:#8B95A1">300 bar · Bereit</div></div>
+   <div style="margin-top:16px;height:14px;border-radius:7px;background:#262B32"><div style="height:14px;border-radius:7px;width:100%;background:#8B95A1"></div></div></div>
+ </div></div>
+<div class="full" style="display:flex;align-items:flex-end;justify-content:center;padding-bottom:60px;pointer-events:none;z-index:8">
+ <div style="position:relative;height:110px;width:1700px">
+ <div class="big sl" style="position:absolute;left:0;right:0;text-align:center;font-size:84px;opacity:0;background:rgba(7,9,12,0.85);padding:8px 0">WENIGER AUFWAND.</div><div class="big sl" style="position:absolute;left:0;right:0;text-align:center;font-size:84px;opacity:0;background:rgba(7,9,12,0.85);padding:8px 0">MEHR ÜBERSICHT.</div><div class="big sl" style="position:absolute;left:0;right:0;text-align:center;font-size:84px;opacity:0;background:rgba(7,9,12,0.85);padding:8px 0">MEHR FOKUS AUF DEN EINSATZ.</div></div></div>
+      </div>
+      <script>
+(function(){
+var GL=556.06;
+
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function pad(n){return String(Math.floor(n)).padStart(2,"0");}
+function mmss(s){s=Math.max(0,s);return pad(s/60)+":"+pad(s%60);}
+function clock(s){s=Math.floor(s);return pad(s/3600%24)+":"+pad(s/60%60)+":"+pad(s%60);}
+function count(tl,el,from,to,at,dur,fmt,ease){var o={v:from};if(!el)return;el.textContent=fmt(from);
+  tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){el.textContent=fmt(o.v);}},at);}
+function type(tl,el,text,at,dur){var o={v:0};if(!el)return;el.textContent="";
+  tl.to(o,{v:text.length,duration:dur,ease:"none",onUpdate:function(){el.textContent=text.slice(0,Math.round(o.v));}},at);}
+function rainLoop(tl,sel,total){document.querySelectorAll(sel).forEach(function(d,i){
+  var cyc=0.45+(i%7)*0.05;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:-260},{y:1340,duration:cyc,ease:"none",repeat:n},(i%11)*0.04);});}
+function sparkLoop(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  var cyc=1.6+r()*1.6;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:0,x:0,opacity:0},{keyframes:[{opacity:1,duration:cyc*0.15},{opacity:0,duration:cyc*0.85}],
+   y:-(380+r()*420),x:(r()-0.5)*260,duration:cyc,ease:"none",repeat:n},r()*1.2);});}
+function smokeDrift(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  tl.fromTo(d,{x:0,y:0,scale:0.9},{x:(r()-0.3)*260,y:-(160+r()*260),scale:1.35+r()*0.4,duration:total,ease:"none"},0);});}
+function gauge(tl,id,from,to,at,dur,ease){var o={v:from};var L=GL;
+  var arc=document.getElementById(id+"-arc"),nd=document.getElementById(id+"-needle"),tx=document.getElementById(id+"-val");
+  function draw(v){var p=Math.max(0,Math.min(1,v/300));if(arc)arc.style.strokeDashoffset=String(L*(1-p));
+    if(nd)nd.setAttribute("transform","rotate("+(-135+270*p)+" 150 150)");if(tx)tx.textContent=String(Math.round(v));
+    if(arc)arc.style.stroke=v<=50?"#D9483D":(v<=74?"#E8912D":"#3E8E41");}
+  draw(from);tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){draw(o.v);}},at);}
+
+var tl = gsap.timeline({ paused: true });
+var Q = function(s){ return "#s09-split " + s; };
+
+tl.fromTo("#s09-split-L",{x:-960},{x:0,duration:0.35,ease:"expo.out"},0);
+tl.fromTo("#s09-split-R",{x:960},{x:0,duration:0.35,ease:"expo.out"},0);
+tl.fromTo("#s09-split-div",{scaleY:0},{scaleY:1,duration:0.4,ease:"expo.out"},0.1);
+tl.fromTo("#s09-split .note",{opacity:0,scale:1.4},{opacity:1,scale:1,duration:0.15,stagger:0.42,ease:"power4.out"},0.4);
+var sh={v:0};var Lin=document.getElementById("s09-split-Lin");
+tl.to(sh,{v:1,duration:3.6,ease:"power2.in",onUpdate:function(){var a=sh.v*16;var p=Math.sin(sh.v*180)*a;Lin.style.transform="translate("+p+"px,"+(Math.cos(sh.v*140)*a*0.6)+"px) rotate("+(p*0.05)+"deg)";}},0.4);
+tl.to("#s09-split-Rin",{y:-6,duration:2,yoyo:true,repeat:1,ease:"sine.inOut"},0.3);
+// wipe the chaos away
+tl.to("#s09-split-div",{x:-960,duration:0.6,ease:"power3.inOut"},4.0);
+tl.to("#s09-split-L",{x:-960,duration:0.6,ease:"power3.inOut"},4.0);
+tl.to("#s09-split-R",{x:-960,width:1920,duration:0.6,ease:"power3.inOut"},4.0);
+tl.to("#s09-split-Rin",{scale:1.0,x:480,duration:0.6,ease:"power3.inOut"},4.0);
+var S=document.querySelectorAll("#s09-split .sl");
+[1.0,2.3,3.7].forEach(function(t,i){tl.fromTo(S[i],{opacity:0,y:20},{opacity:1,y:0,duration:0.25,ease:"power3.out"},t);
+ if(i<2)tl.to(S[i],{opacity:0,duration:0.15},[2.3,3.7][i]-0.05);});
+
+window.__timelines["s09-split"] = tl;
+})();
+      </script>
+    </template>
+  </body>
+</html>

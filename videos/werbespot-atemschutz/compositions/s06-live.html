@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="de">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+#s06-live { position:absolute; inset:0; overflow:hidden; background:#07090C; color:#E4E7EB;
+  font-family:Inter, sans-serif; }
+#s06-live .full { position:absolute; inset:0; }
+#s06-live .mono { font-family:'IBM Plex Mono', monospace; }
+#s06-live .osw { font-family:Oswald, sans-serif; }
+#s06-live .slate { position:absolute; left:64px; bottom:56px; font-family:'IBM Plex Mono', monospace;
+  font-size:20px; letter-spacing:0.08em; color:#C7CDD3; display:flex; gap:16px; align-items:center; z-index:50; }
+#s06-live .slate b { color:#07090C; background:#E4E7EB; padding:4px 10px; font-weight:600; }
+#s06-live .lb { position:absolute; left:0; right:0; height:120px; background:#000; z-index:40; }
+#s06-live .lb.t { top:0; } #s06-live .lb.b { bottom:0; }
+#s06-live .drop { position:absolute; width:2px; border-radius:2px;
+  background:linear-gradient(180deg, rgba(180,200,255,0), rgba(190,210,255,0.55)); }
+#s06-live .spark { position:absolute; width:6px; height:6px; border-radius:50%;
+  background:#FFB765; box-shadow:0 0 12px 4px rgba(255,140,40,0.7); }
+#s06-live .smoke { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(120,128,140,0.55) 0%, rgba(70,76,86,0.25) 45%, rgba(0,0,0,0) 70%); }
+#s06-live .blue { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(61,123,255,0.85) 0%, rgba(40,80,220,0.35) 35%, rgba(0,0,0,0) 70%); }
+#s06-live .shot { position:absolute; inset:0; opacity:0; }
+#s06-live .flash { position:absolute; inset:0; background:#DCE6FF; opacity:0; z-index:45; }
+#s06-live .ico { filter: drop-shadow(0 0 18px rgba(61,123,255,0.65)); }
+#s06-live .big { font-family:Oswald, sans-serif; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.01em; line-height:0.95; }
+#s06-live .card { background:#1A1D21; border:3px solid #262B32; border-radius:28px; }
+#s06-live .chip { display:inline-flex; align-items:center; padding:14px 26px; border-radius:999px;
+  border:3px solid #3A424B; font-size:26px; font-weight:600; color:#E4E7EB; background:#12151A; }
+#s06-live .btnp { display:flex; align-items:center; justify-content:center; border-radius:20px;
+  background:#D9483D; color:#fff; font-weight:700; font-size:30px; letter-spacing:0.02em; }
+#s06-live .lbl { font-family:'IBM Plex Mono', monospace; font-size:20px; letter-spacing:0.14em;
+  text-transform:uppercase; color:#9AA1A9; }
+#s06-live .ch { display:inline-block; }
+#s06-live .ripple { position:absolute; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%;
+  border:4px solid rgba(255,255,255,0.9); opacity:0; }
+
+#s06-live .acard { position:absolute; width:1180px; padding:40px 44px; background:#1A1D21; border:3px solid #262B32;
+  border-radius:32px; box-shadow:0 40px 120px rgba(0,0,0,0.6); }
+#s06-live .acard.warn { border-color:#E8912D; }
+#s06-live .ahead { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+#s06-live .aname { font-family:Oswald, sans-serif; font-size:52px; font-weight:700; }
+#s06-live .astatus { font-family:'IBM Plex Mono', monospace; font-size:24px; font-weight:600; padding:10px 22px;
+  border-radius:999px; color:#fff; background:#3E8E41; }
+#s06-live .agrid { display:flex; gap:44px; }
+#s06-live .agauge { position:relative; width:380px; display:flex; flex-direction:column; align-items:center; }
+#s06-live .agval { position:absolute; top:104px; left:0; right:0; text-align:center; font-family:Oswald, sans-serif;
+  font-size:104px; font-weight:700; line-height:1; }
+#s06-live .agunit { position:absolute; top:250px; left:0; right:0; text-align:center; font-size:24px; color:#9AA1A9; }
+#s06-live .athr { font-family:'IBM Plex Mono', monospace; font-size:21px; color:#9AA1A9; text-align:center; margin-top:8px; }
+#s06-live .aside { flex:1; display:flex; flex-direction:column; gap:20px; }
+#s06-live .anext { background:#12151A; border:3px solid #262B32; border-radius:22px; padding:22px 26px; }
+#s06-live .anext .t { font-family:'IBM Plex Mono', monospace; font-size:64px; font-weight:600; line-height:1.05; }
+#s06-live .ainp { display:flex; gap:14px; margin-top:14px; }
+#s06-live .ainp .f { flex:1; border:3px solid #3A424B; border-radius:16px; padding:14px 18px; font-size:28px; color:#9AA1A9; }
+#s06-live .ainp .f.on { color:#E4E7EB; border-color:#E4E7EB; }
+#s06-live .ainp .b { border-radius:16px; padding:14px 22px; font-weight:700; font-size:26px; background:#D9483D; color:#fff;
+  font-family:'IBM Plex Mono', monospace; letter-spacing:0.06em; }
+#s06-live .arow { display:flex; gap:18px; align-items:flex-start; }
+#s06-live .arow .m { font-size:30px; font-weight:600; }
+#s06-live .arow .s { font-size:23px; color:#9AA1A9; margin-top:2px; }
+#s06-live .aacts { display:flex; gap:16px; margin-top:26px; }
+
+#s06-live .tag { position:absolute; padding:18px 26px; border-left:6px solid #D9483D; background:rgba(18,21,26,0.86); }
+#s06-live .tv { font-size:64px; font-weight:700; line-height:1.25; margin-top:4px; }
+</style>
+      <div id="s06-live" data-composition-id="s06-live" data-width="1920" data-height="1080" data-duration="6">
+
+<div class="full" style="background:radial-gradient(ellipse at 50% 50%, rgba(61,123,255,0.16), rgba(0,0,0,0) 60%), #07090C"></div>
+<div class="full" id="s06-live-a">
+ <div class="full" style="perspective:2000px;display:flex;align-items:center;justify-content:center">
+  <div id="s06-live-holder" style="width:1180px;height:900px;position:relative;transform:scale(0.8)"><div class="acard" id="s06-live-card" style="left:0;top:60px;transform-origin:50% 50%">
+ <div class="ahead"><div class="aname">Trupp Müller</div><div class="astatus" id="s06-live-card-st">Im Einsatz</div></div>
+ <div class="agrid">
+  <div class="agauge"><svg viewBox="0 0 300 300" width="300" height="300" style="display:block">
+  <path d="M 66.56 233.44 A 118 118 0 1 1 233.44 233.44" fill="none" stroke="#262B32" stroke-width="18" stroke-linecap="round"/>
+  <path id="s06-live-card-arc" d="M 66.56 233.44 A 118 118 0 1 1 233.44 233.44" fill="none" stroke="#3E8E41" stroke-width="18" stroke-linecap="round"
+    style="stroke-dasharray:556.06;stroke-dashoffset:0"/>
+  <line x1="79.3" y1="220.7" x2="87.8" y2="212.2" stroke="#5A636E" stroke-width="3"/><line x1="69.1" y1="208.8" x2="74.0" y2="205.3" stroke="#5A636E" stroke-width="2"/><line x1="60.9" y1="195.4" x2="66.2" y2="192.7" stroke="#5A636E" stroke-width="2"/><line x1="54.9" y1="180.9" x2="60.6" y2="179.0" stroke="#5A636E" stroke-width="2"/><line x1="51.2" y1="165.6" x2="57.2" y2="164.7" stroke="#5A636E" stroke-width="2"/><line x1="50.0" y1="150.0" x2="62.0" y2="150.0" stroke="#5A636E" stroke-width="3"/><line x1="51.2" y1="134.4" x2="57.2" y2="135.3" stroke="#5A636E" stroke-width="2"/><line x1="54.9" y1="119.1" x2="60.6" y2="121.0" stroke="#5A636E" stroke-width="2"/><line x1="60.9" y1="104.6" x2="66.2" y2="107.3" stroke="#5A636E" stroke-width="2"/><line x1="69.1" y1="91.2" x2="74.0" y2="94.7" stroke="#5A636E" stroke-width="2"/><line x1="79.3" y1="79.3" x2="87.8" y2="87.8" stroke="#5A636E" stroke-width="3"/><line x1="91.2" y1="69.1" x2="94.7" y2="74.0" stroke="#5A636E" stroke-width="2"/><line x1="104.6" y1="60.9" x2="107.3" y2="66.2" stroke="#5A636E" stroke-width="2"/><line x1="119.1" y1="54.9" x2="121.0" y2="60.6" stroke="#5A636E" stroke-width="2"/><line x1="134.4" y1="51.2" x2="135.3" y2="57.2" stroke="#5A636E" stroke-width="2"/><line x1="150.0" y1="50.0" x2="150.0" y2="62.0" stroke="#5A636E" stroke-width="3"/><line x1="165.6" y1="51.2" x2="164.7" y2="57.2" stroke="#5A636E" stroke-width="2"/><line x1="180.9" y1="54.9" x2="179.0" y2="60.6" stroke="#5A636E" stroke-width="2"/><line x1="195.4" y1="60.9" x2="192.7" y2="66.2" stroke="#5A636E" stroke-width="2"/><line x1="208.8" y1="69.1" x2="205.3" y2="74.0" stroke="#5A636E" stroke-width="2"/><line x1="220.7" y1="79.3" x2="212.2" y2="87.8" stroke="#5A636E" stroke-width="3"/><line x1="230.9" y1="91.2" x2="226.0" y2="94.7" stroke="#5A636E" stroke-width="2"/><line x1="239.1" y1="104.6" x2="233.8" y2="107.3" stroke="#5A636E" stroke-width="2"/><line x1="245.1" y1="119.1" x2="239.4" y2="121.0" stroke="#5A636E" stroke-width="2"/><line x1="248.8" y1="134.4" x2="242.8" y2="135.3" stroke="#5A636E" stroke-width="2"/><line x1="250.0" y1="150.0" x2="238.0" y2="150.0" stroke="#5A636E" stroke-width="3"/><line x1="248.8" y1="165.6" x2="242.8" y2="164.7" stroke="#5A636E" stroke-width="2"/><line x1="245.1" y1="180.9" x2="239.4" y2="179.0" stroke="#5A636E" stroke-width="2"/><line x1="239.1" y1="195.4" x2="233.8" y2="192.7" stroke="#5A636E" stroke-width="2"/><line x1="230.9" y1="208.8" x2="226.0" y2="205.3" stroke="#5A636E" stroke-width="2"/><line x1="220.7" y1="220.7" x2="212.2" y2="212.2" stroke="#5A636E" stroke-width="3"/><line x1="49.6" y1="110.2" x2="27.3" y2="101.4" stroke="#E8912D" stroke-width="6" stroke-linecap="round"/><line x1="42.0" y1="150.0" x2="18.0" y2="150.0" stroke="#D9483D" stroke-width="6" stroke-linecap="round"/>
+  <line id="s06-live-card-needle" x1="150" y1="150" x2="150" y2="62" stroke="#E4E7EB" stroke-width="6" stroke-linecap="round"
+    transform="rotate(135 150 150)"/>
+  <circle cx="150" cy="150" r="12" fill="#E4E7EB"/>
+</svg><div class="agval" id="s06-live-card-val">210</div><div class="agunit">bar · vor 0:12</div>
+   <div class="athr">Verbrauch 7.0 bar/min · Rückzug ab 74 bar · Alarm ab 50 bar</div></div>
+  <div class="aside">
+   <div class="anext"><div class="lbl">Nächste Abfrage</div><div class="t" id="s06-live-card-nq">07:12</div>
+    <div class="ainp"><div class="f" id="s06-live-card-in">Druck (bar)</div><div class="b" id="s06-live-card-er">ERFASSEN</div></div></div>
+   <div class="arow"><svg viewBox="0 0 24 24" width="40" height="40"><g fill="none" stroke="#9AA1A9" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14c3 0 6 1.5 6 5"/></g></svg><div><div class="m">Müller</div><div class="s">Keller, Brunner · Überwacher: Weber</div></div></div>
+   <div class="arow"><svg viewBox="0 0 24 24" width="40" height="40"><g fill="none" stroke="#9AA1A9" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g></svg><div><div class="m" id="s06-live-card-ez">12:48</div><div class="s">Einsatzzeit</div></div></div>
+   <div class="arow"><svg viewBox="0 0 24 24" width="40" height="40"><g fill="none" stroke="#9AA1A9" stroke-width="2"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></g></svg><div><div class="m">Hauptstrasse 12, Zuchwil</div><div class="s">Brandbekämpfung 1. OG</div></div></div>
+   <div class="arow"><svg viewBox="0 0 24 24" width="40" height="40"><g fill="none" stroke="#9AA1A9" stroke-width="2"><rect x="6" y="7" width="12" height="15" rx="2"/><path d="M9 7V2M9 12h6M9 16h6"/></g></svg><div><div class="m">Kanal 3</div><div class="s">Seil: rot</div></div></div>
+  </div>
+ </div>
+</div></div></div>
+ <div class="tag" id="s06-live-l1" style="left:70px;top:200px"><div class="lbl">EINSATZZEIT</div><div class="osw tv"><span id="s06-live-v1">12:48</span></div></div><div class="tag" id="s06-live-l2" style="left:70px;top:620px"><div class="lbl">ATEMLUFT</div><div class="osw tv"><span id="s06-live-v2">210</span> bar</div></div><div class="tag" id="s06-live-l3" style="left:1500px;top:200px"><div class="lbl">NÄCHSTE ABFRAGE</div><div class="osw tv"><span id="s06-live-v3">07:12</span></div></div><div class="tag" id="s06-live-l4" style="left:1500px;top:450px"><div class="lbl">TRUPPSTATUS</div><div class="osw tv"><span style="color:#3E8E41">IM EINSATZ</span></div></div><div class="tag" id="s06-live-l5" style="left:1500px;top:700px"><div class="lbl">RÜCKZUG AB</div><div class="osw tv"><span style="color:#E8912D">74 bar</span></div></div>
+ <div class="lbl" style="position:absolute;right:70px;bottom:60px;color:#C7CDD3">ZEITRAFFER ×12</div>
+</div>
+<div class="full" id="s06-live-lead" style="opacity:0;background:#12151A">
+ <div style="position:absolute;left:120px;top:90px"><div class="big" style="font-size:76px">Einsatzleiter-Ansicht</div>
+  <div class="lbl" style="margin-top:26px" id="s06-live-lc">14:26:07 · nur Übersicht, keine Bedienung</div></div>
+ <div style="position:absolute;left:120px;right:120px;top:270px;display:flex;gap:30px">
+  <div class="card st" style="flex:1;padding:26px 30px;border-color:#D9483D"><div class="osw" style="font-size:96px;font-weight:700;color:#D9483D;line-height:1">0</div><div style="font-size:30px;font-weight:600">Alarm</div></div><div class="card st" style="flex:1;padding:26px 30px;border-color:#E8912D"><div class="osw" style="font-size:96px;font-weight:700;color:#E8912D;line-height:1">0</div><div style="font-size:30px;font-weight:600">Rückzug</div></div><div class="card st" style="flex:1;padding:26px 30px;border-color:#3E8E41"><div class="osw" style="font-size:96px;font-weight:700;color:#3E8E41;line-height:1">2</div><div style="font-size:30px;font-weight:600">Im Einsatz</div></div><div class="card st" style="flex:1;padding:26px 30px;border-color:#8B95A1"><div class="osw" style="font-size:96px;font-weight:700;color:#8B95A1;line-height:1">1</div><div style="font-size:30px;font-weight:600">Bereit</div></div></div>
+ <div style="position:absolute;left:120px;right:120px;top:540px;display:flex;gap:30px">
+  <div class="card lc" style="flex:1;padding:30px;border-color:#3E8E41"><div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:46px;font-weight:700">Müller</div>
+   <div class="mono" style="font-size:22px;color:#3E8E41">Im Einsatz</div></div><div style="font-size:24px;color:#9AA1A9;margin-top:8px">Keller, Brunner · Brandbekämpfung 1. OG</div>
+   <div style="margin-top:26px;height:16px;border-radius:8px;background:#262B32"><div style="height:16px;border-radius:8px;width:67%;background:#3E8E41"></div></div>
+   <div class="mono" style="font-size:22px;color:#9AA1A9;margin-top:14px;display:flex;justify-content:space-between"><span>202 bar</span><span>Rückzug ab 74 bar</span></div></div><div class="card lc" style="flex:1;padding:30px;border-color:#3E8E41"><div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:46px;font-weight:700">Frei</div>
+   <div class="mono" style="font-size:22px;color:#3E8E41">Im Einsatz</div></div><div style="font-size:24px;color:#9AA1A9;margin-top:8px">Roth, Studer · Personensuche DG</div>
+   <div style="margin-top:26px;height:16px;border-radius:8px;background:#262B32"><div style="height:16px;border-radius:8px;width:84%;background:#3E8E41"></div></div>
+   <div class="mono" style="font-size:22px;color:#9AA1A9;margin-top:14px;display:flex;justify-content:space-between"><span>251 bar</span><span>Rückzug ab 50 bar</span></div></div><div class="card lc" style="flex:1;padding:30px;border-color:#8B95A1"><div style="display:flex;justify-content:space-between"><div class="osw" style="font-size:46px;font-weight:700">Schaad</div>
+   <div class="mono" style="font-size:22px;color:#8B95A1">Bereit</div></div><div style="font-size:24px;color:#9AA1A9;margin-top:8px">Kunz, Meier · Reserve</div>
+   <div style="margin-top:26px;height:16px;border-radius:8px;background:#262B32"><div style="height:16px;border-radius:8px;width:100%;background:#8B95A1"></div></div>
+   <div class="mono" style="font-size:22px;color:#9AA1A9;margin-top:14px;display:flex;justify-content:space-between"><span>300 bar</span><span>Rückzug ab 50 bar</span></div></div></div>
+</div>
+      </div>
+      <script>
+(function(){
+var GL=556.06;
+
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function pad(n){return String(Math.floor(n)).padStart(2,"0");}
+function mmss(s){s=Math.max(0,s);return pad(s/60)+":"+pad(s%60);}
+function clock(s){s=Math.floor(s);return pad(s/3600%24)+":"+pad(s/60%60)+":"+pad(s%60);}
+function count(tl,el,from,to,at,dur,fmt,ease){var o={v:from};if(!el)return;el.textContent=fmt(from);
+  tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){el.textContent=fmt(o.v);}},at);}
+function type(tl,el,text,at,dur){var o={v:0};if(!el)return;el.textContent="";
+  tl.to(o,{v:text.length,duration:dur,ease:"none",onUpdate:function(){el.textContent=text.slice(0,Math.round(o.v));}},at);}
+function rainLoop(tl,sel,total){document.querySelectorAll(sel).forEach(function(d,i){
+  var cyc=0.45+(i%7)*0.05;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:-260},{y:1340,duration:cyc,ease:"none",repeat:n},(i%11)*0.04);});}
+function sparkLoop(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  var cyc=1.6+r()*1.6;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:0,x:0,opacity:0},{keyframes:[{opacity:1,duration:cyc*0.15},{opacity:0,duration:cyc*0.85}],
+   y:-(380+r()*420),x:(r()-0.5)*260,duration:cyc,ease:"none",repeat:n},r()*1.2);});}
+function smokeDrift(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  tl.fromTo(d,{x:0,y:0,scale:0.9},{x:(r()-0.3)*260,y:-(160+r()*260),scale:1.35+r()*0.4,duration:total,ease:"none"},0);});}
+function gauge(tl,id,from,to,at,dur,ease){var o={v:from};var L=GL;
+  var arc=document.getElementById(id+"-arc"),nd=document.getElementById(id+"-needle"),tx=document.getElementById(id+"-val");
+  function draw(v){var p=Math.max(0,Math.min(1,v/300));if(arc)arc.style.strokeDashoffset=String(L*(1-p));
+    if(nd)nd.setAttribute("transform","rotate("+(-135+270*p)+" 150 150)");if(tx)tx.textContent=String(Math.round(v));
+    if(arc)arc.style.stroke=v<=50?"#D9483D":(v<=74?"#E8912D":"#3E8E41");}
+  draw(from);tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){draw(o.v);}},at);}
+
+var tl = gsap.timeline({ paused: true });
+var Q = function(s){ return "#s06-live " + s; };
+
+tl.fromTo("#s06-live-a",{y:1100,filter:"blur(20px)"},{y:0,filter:"blur(0px)",duration:0.3,ease:"power3.out"},0);
+tl.fromTo("#s06-live-card",{rotationY:-28,rotationX:10,z:-200},{rotationY:22,rotationX:4,z:0,duration:4.6,ease:"sine.inOut"},0);
+var T=12;
+count(tl,document.getElementById("s06-live-v1"),768,768+4.4*T,0.2,4.4,mmss);
+count(tl,document.getElementById("s06-live-card-ez"),768,768+4.4*T,0.2,4.4,mmss);
+count(tl,document.getElementById("s06-live-v3"),432,432-4.4*T,0.2,4.4,mmss);
+count(tl,document.getElementById("s06-live-card-nq"),432,432-4.4*T,0.2,4.4,mmss);
+count(tl,document.getElementById("s06-live-v2"),210.4,210.4-7*4.4*T/60,0.2,4.4,function(v){return String(Math.round(v));});
+gauge(tl,"s06-live-card",210.4,210.4-7*4.4*T/60,0.2,4.4);
+["#s06-live-l1","#s06-live-l2","#s06-live-l3","#s06-live-l4","#s06-live-l5"].forEach(function(s,i){
+ tl.fromTo(s,{opacity:0,x:i<2?-60:60},{opacity:1,x:0,duration:0.35,ease:"expo.out"},0.35+i*0.62);});
+// pull out into Einsatzleiter-Ansicht
+tl.to("#s06-live-a",{scale:0.55,opacity:0,duration:0.45,ease:"power3.in"},4.5);
+tl.set("#s06-live-lead",{opacity:1},4.85);
+tl.fromTo("#s06-live-lead",{scale:1.25},{scale:1,duration:0.6,ease:"expo.out"},4.85);
+tl.fromTo("#s06-live .st",{y:40,opacity:0},{y:0,opacity:1,duration:0.4,stagger:0.06,ease:"power3.out"},4.9);
+tl.fromTo("#s06-live .lc",{y:60,opacity:0},{y:0,opacity:1,duration:0.45,stagger:0.07,ease:"power3.out"},5.0);
+
+window.__timelines["s06-live"] = tl;
+})();
+      </script>
+    </template>
+  </body>
+</html>

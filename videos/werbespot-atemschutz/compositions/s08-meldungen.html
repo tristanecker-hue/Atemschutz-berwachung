@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="de">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+#s08-meldungen { position:absolute; inset:0; overflow:hidden; background:#07090C; color:#E4E7EB;
+  font-family:Inter, sans-serif; }
+#s08-meldungen .full { position:absolute; inset:0; }
+#s08-meldungen .mono { font-family:'IBM Plex Mono', monospace; }
+#s08-meldungen .osw { font-family:Oswald, sans-serif; }
+#s08-meldungen .slate { position:absolute; left:64px; bottom:56px; font-family:'IBM Plex Mono', monospace;
+  font-size:20px; letter-spacing:0.08em; color:#C7CDD3; display:flex; gap:16px; align-items:center; z-index:50; }
+#s08-meldungen .slate b { color:#07090C; background:#E4E7EB; padding:4px 10px; font-weight:600; }
+#s08-meldungen .lb { position:absolute; left:0; right:0; height:120px; background:#000; z-index:40; }
+#s08-meldungen .lb.t { top:0; } #s08-meldungen .lb.b { bottom:0; }
+#s08-meldungen .drop { position:absolute; width:2px; border-radius:2px;
+  background:linear-gradient(180deg, rgba(180,200,255,0), rgba(190,210,255,0.55)); }
+#s08-meldungen .spark { position:absolute; width:6px; height:6px; border-radius:50%;
+  background:#FFB765; box-shadow:0 0 12px 4px rgba(255,140,40,0.7); }
+#s08-meldungen .smoke { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(120,128,140,0.55) 0%, rgba(70,76,86,0.25) 45%, rgba(0,0,0,0) 70%); }
+#s08-meldungen .blue { position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(61,123,255,0.85) 0%, rgba(40,80,220,0.35) 35%, rgba(0,0,0,0) 70%); }
+#s08-meldungen .shot { position:absolute; inset:0; opacity:0; }
+#s08-meldungen .flash { position:absolute; inset:0; background:#DCE6FF; opacity:0; z-index:45; }
+#s08-meldungen .ico { filter: drop-shadow(0 0 18px rgba(61,123,255,0.65)); }
+#s08-meldungen .big { font-family:Oswald, sans-serif; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.01em; line-height:0.95; }
+#s08-meldungen .card { background:#1A1D21; border:3px solid #262B32; border-radius:28px; }
+#s08-meldungen .chip { display:inline-flex; align-items:center; padding:14px 26px; border-radius:999px;
+  border:3px solid #3A424B; font-size:26px; font-weight:600; color:#E4E7EB; background:#12151A; }
+#s08-meldungen .btnp { display:flex; align-items:center; justify-content:center; border-radius:20px;
+  background:#D9483D; color:#fff; font-weight:700; font-size:30px; letter-spacing:0.02em; }
+#s08-meldungen .lbl { font-family:'IBM Plex Mono', monospace; font-size:20px; letter-spacing:0.14em;
+  text-transform:uppercase; color:#9AA1A9; }
+#s08-meldungen .ch { display:inline-block; }
+#s08-meldungen .ripple { position:absolute; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%;
+  border:4px solid rgba(255,255,255,0.9); opacity:0; }
+
+#s08-meldungen .acard { position:absolute; width:1180px; padding:40px 44px; background:#1A1D21; border:3px solid #262B32;
+  border-radius:32px; box-shadow:0 40px 120px rgba(0,0,0,0.6); }
+#s08-meldungen .acard.warn { border-color:#E8912D; }
+#s08-meldungen .ahead { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+#s08-meldungen .aname { font-family:Oswald, sans-serif; font-size:52px; font-weight:700; }
+#s08-meldungen .astatus { font-family:'IBM Plex Mono', monospace; font-size:24px; font-weight:600; padding:10px 22px;
+  border-radius:999px; color:#fff; background:#3E8E41; }
+#s08-meldungen .agrid { display:flex; gap:44px; }
+#s08-meldungen .agauge { position:relative; width:380px; display:flex; flex-direction:column; align-items:center; }
+#s08-meldungen .agval { position:absolute; top:104px; left:0; right:0; text-align:center; font-family:Oswald, sans-serif;
+  font-size:104px; font-weight:700; line-height:1; }
+#s08-meldungen .agunit { position:absolute; top:250px; left:0; right:0; text-align:center; font-size:24px; color:#9AA1A9; }
+#s08-meldungen .athr { font-family:'IBM Plex Mono', monospace; font-size:21px; color:#9AA1A9; text-align:center; margin-top:8px; }
+#s08-meldungen .aside { flex:1; display:flex; flex-direction:column; gap:20px; }
+#s08-meldungen .anext { background:#12151A; border:3px solid #262B32; border-radius:22px; padding:22px 26px; }
+#s08-meldungen .anext .t { font-family:'IBM Plex Mono', monospace; font-size:64px; font-weight:600; line-height:1.05; }
+#s08-meldungen .ainp { display:flex; gap:14px; margin-top:14px; }
+#s08-meldungen .ainp .f { flex:1; border:3px solid #3A424B; border-radius:16px; padding:14px 18px; font-size:28px; color:#9AA1A9; }
+#s08-meldungen .ainp .f.on { color:#E4E7EB; border-color:#E4E7EB; }
+#s08-meldungen .ainp .b { border-radius:16px; padding:14px 22px; font-weight:700; font-size:26px; background:#D9483D; color:#fff;
+  font-family:'IBM Plex Mono', monospace; letter-spacing:0.06em; }
+#s08-meldungen .arow { display:flex; gap:18px; align-items:flex-start; }
+#s08-meldungen .arow .m { font-size:30px; font-weight:600; }
+#s08-meldungen .arow .s { font-size:23px; color:#9AA1A9; margin-top:2px; }
+#s08-meldungen .aacts { display:flex; gap:16px; margin-top:26px; }
+
+#s08-meldungen .li { display:flex; gap:28px; font-size:30px; padding:14px 0; border-bottom:2px solid #262B32; }
+#s08-meldungen .li .mono { color:#9AA1A9; }
+#s08-meldungen .li.hl { opacity:0; }
+#s08-meldungen .ev { position:absolute; top:60px; width:400px; opacity:0; }
+#s08-meldungen .tick { width:34px; height:34px; border-radius:50%; background:#12151A; border:6px solid #D9483D; margin:33px 0 26px; }
+#s08-meldungen .et { font-size:40px; font-weight:600; }
+#s08-meldungen .ek { font-size:36px; font-weight:700; margin-top:6px; }
+#s08-meldungen .ep { font-size:28px; color:#9AA1A9; margin-top:4px; }
+</style>
+      <div id="s08-meldungen" data-composition-id="s08-meldungen" data-width="1920" data-height="1080" data-duration="6">
+
+<div class="full" style="background:radial-gradient(ellipse at 30% 40%, rgba(61,123,255,0.14), rgba(0,0,0,0) 55%), #12151A"></div>
+<div class="full" id="s08-meldungen-a">
+ <div id="s08-meldungen-funk" style="position:absolute;left:120px;top:160px;width:640px">
+   <div class="ico" style="transform:scale(0.75);transform-origin:0 0"><svg viewBox="0 0 300 460" width="400" height="610"><g fill="none" stroke="#E4E7EB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+<rect x="60" y="120" width="180" height="320" rx="26"/><path d="M90 120 L90 20"/><rect x="80" y="150" width="140" height="70" rx="8"/>
+<path d="M100 260 h100 M100 290 h100 M100 320 h100 M100 350 h100"/><path d="M240 230 h22 v70 h-22" stroke="#D9483D"/></g>
+<circle id="s08-meldungen-led" cx="200" cy="395" r="12" fill="#D9483D" opacity="0.2"/></svg></div></div>
+ <div id="s08-meldungen-sub" class="mono" style="position:absolute;left:120px;top:690px;width:700px;font-size:34px;color:#C7CDD3">FUNK · «Trupp Müller, Einsatzziel erreicht.»</div>
+ <div class="card" style="position:absolute;left:880px;top:140px;width:920px;padding:36px 40px" id="s08-meldungen-pan">
+  <div class="osw" style="font-size:48px;font-weight:700">Trupp Müller</div>
+  <div style="display:flex;gap:18px;margin-top:22px"><span class="chip" id="s08-meldungen-b1">Einsatzziel erreicht</span><span class="chip" id="s08-meldungen-b2">Rückzug gemeldet</span></div>
+  <div class="lbl" style="margin-top:34px">Meldungen</div>
+  <div id="s08-meldungen-list" style="margin-top:10px">
+   <div class="li"><span class="mono">14:12:07</span><span>Einsatz gestartet · 300 bar</span></div>
+   <div class="li hl" id="s08-meldungen-m1"><span class="mono">14:21:43</span><span>Einsatzziel erreicht</span></div>
+   <div class="li hl mid"><span class="mono">14:22:07</span><span>230 bar</span></div>
+   <div class="li hl mid"><span class="mono">14:32:10</span><span>160 bar</span></div>
+   <div class="li hl" id="s08-meldungen-m2"><span class="mono">14:44:31</span><span>Rückzug gemeldet</span></div>
+  </div></div>
+</div>
+<div class="full" id="s08-meldungen-tlw" style="opacity:0;perspective:1600px">
+ <div class="lbl" style="position:absolute;left:140px;top:120px;font-size:24px;color:#E4E7EB">Protokoll · Trupp Müller</div>
+ <div id="s08-meldungen-tl" style="position:absolute;left:0;top:300px;width:2800px;height:560px">
+  <div id="s08-meldungen-axis" style="position:absolute;left:140px;top:110px;width:2400px;height:6px;background:#D9483D;transform-origin:0 50%"></div>
+  <div class="ev" id="s08-meldungen-e0" style="left:140px"><div class="tick"></div><div class="mono et">14:12:07</div>
+      <div class="ek">Start</div><div class="mono ep">300 bar</div></div><div class="ev" id="s08-meldungen-e1" style="left:570px"><div class="tick"></div><div class="mono et">14:21:43</div>
+      <div class="ek">Einsatzziel erreicht</div><div class="mono ep"></div></div><div class="ev" id="s08-meldungen-e2" style="left:1000px"><div class="tick"></div><div class="mono et">14:22:07</div>
+      <div class="ek">Druckabfrage</div><div class="mono ep">230 bar</div></div><div class="ev" id="s08-meldungen-e3" style="left:1430px"><div class="tick"></div><div class="mono et">14:32:10</div>
+      <div class="ek">Druckabfrage</div><div class="mono ep">160 bar</div></div><div class="ev" id="s08-meldungen-e4" style="left:1860px"><div class="tick"></div><div class="mono et">14:44:31</div>
+      <div class="ek">Rückzug gemeldet</div><div class="mono ep"></div></div><div class="ev" id="s08-meldungen-e5" style="left:2290px"><div class="tick"></div><div class="mono et">14:48:55</div>
+      <div class="ek">Einsatz Ende</div><div class="mono ep">60 bar</div></div></div>
+</div>
+<div class="ripple" id="s08-meldungen-r"></div>
+      </div>
+      <script>
+(function(){
+var GL=556.06;
+
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function pad(n){return String(Math.floor(n)).padStart(2,"0");}
+function mmss(s){s=Math.max(0,s);return pad(s/60)+":"+pad(s%60);}
+function clock(s){s=Math.floor(s);return pad(s/3600%24)+":"+pad(s/60%60)+":"+pad(s%60);}
+function count(tl,el,from,to,at,dur,fmt,ease){var o={v:from};if(!el)return;el.textContent=fmt(from);
+  tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){el.textContent=fmt(o.v);}},at);}
+function type(tl,el,text,at,dur){var o={v:0};if(!el)return;el.textContent="";
+  tl.to(o,{v:text.length,duration:dur,ease:"none",onUpdate:function(){el.textContent=text.slice(0,Math.round(o.v));}},at);}
+function rainLoop(tl,sel,total){document.querySelectorAll(sel).forEach(function(d,i){
+  var cyc=0.45+(i%7)*0.05;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:-260},{y:1340,duration:cyc,ease:"none",repeat:n},(i%11)*0.04);});}
+function sparkLoop(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  var cyc=1.6+r()*1.6;var n=Math.max(0,Math.floor(total/cyc)-1);
+  tl.fromTo(d,{y:0,x:0,opacity:0},{keyframes:[{opacity:1,duration:cyc*0.15},{opacity:0,duration:cyc*0.85}],
+   y:-(380+r()*420),x:(r()-0.5)*260,duration:cyc,ease:"none",repeat:n},r()*1.2);});}
+function smokeDrift(tl,sel,total,seed){var r=rng(seed);document.querySelectorAll(sel).forEach(function(d){
+  tl.fromTo(d,{x:0,y:0,scale:0.9},{x:(r()-0.3)*260,y:-(160+r()*260),scale:1.35+r()*0.4,duration:total,ease:"none"},0);});}
+function gauge(tl,id,from,to,at,dur,ease){var o={v:from};var L=GL;
+  var arc=document.getElementById(id+"-arc"),nd=document.getElementById(id+"-needle"),tx=document.getElementById(id+"-val");
+  function draw(v){var p=Math.max(0,Math.min(1,v/300));if(arc)arc.style.strokeDashoffset=String(L*(1-p));
+    if(nd)nd.setAttribute("transform","rotate("+(-135+270*p)+" 150 150)");if(tx)tx.textContent=String(Math.round(v));
+    if(arc)arc.style.stroke=v<=50?"#D9483D":(v<=74?"#E8912D":"#3E8E41");}
+  draw(from);tl.to(o,{v:to,duration:dur,ease:ease||"none",onUpdate:function(){draw(o.v);}},at);}
+
+var tl = gsap.timeline({ paused: true });
+var Q = function(s){ return "#s08-meldungen " + s; };
+
+tl.fromTo("#s08-meldungen-a",{y:1100,filter:"blur(22px)"},{y:0,filter:"blur(0px)",duration:0.3,ease:"power3.out"},0);
+tl.fromTo("#s08-meldungen-led",{opacity:0.2},{opacity:1,duration:0.06,yoyo:true,repeat:9},0.2);
+tl.fromTo("#s08-meldungen-sub",{opacity:0},{opacity:1,duration:0.2},0.25);
+function tap(at,x,y){tl.set("#s08-meldungen-r",{left:x,top:y},at);tl.fromTo("#s08-meldungen-r",{scale:0.3,opacity:1},{scale:1.6,opacity:0,duration:0.4},at);}
+tap(1.1,1110,282);
+tl.fromTo("#s08-meldungen-b1",{backgroundColor:"#12151A"},{backgroundColor:"#3E8E41",duration:0.1},1.1);
+tl.fromTo("#s08-meldungen-m1",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},1.25);
+tl.fromTo("#s08-meldungen-m1",{backgroundColor:"rgba(217,72,61,0.35)"},{immediateRender:false,backgroundColor:"rgba(217,72,61,0)",duration:0.8},1.3);
+var sub=document.getElementById("s08-meldungen-sub");var so={v:0};
+tl.to(so,{v:1,duration:0.01,onUpdate:function(){sub.textContent=so.v>0.5?"FUNK · «Rückzug.»":"FUNK · «Trupp Müller, Einsatzziel erreicht.»";}},2.4);
+tl.fromTo("#s08-meldungen-led",{opacity:0.2},{immediateRender:false,opacity:1,duration:0.06,yoyo:true,repeat:7},2.4);
+tl.fromTo("#s08-meldungen .mid",{opacity:0,x:80},{opacity:1,x:0,duration:0.25,stagger:0.15,ease:"expo.out"},2.0);
+tap(2.9,1440,282);
+tl.fromTo("#s08-meldungen-b2",{backgroundColor:"#12151A"},{backgroundColor:"#E8912D",duration:0.1},2.9);
+tl.fromTo("#s08-meldungen-m2",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},3.05);
+// timeline in 3D
+tl.to("#s08-meldungen-a",{opacity:0,scale:0.9,duration:0.3},3.7);
+tl.set("#s08-meldungen-tlw",{opacity:1},3.85);
+tl.fromTo("#s08-meldungen-tl",{rotationX:40,x:260,y:0},{rotationX:22,x:-380,duration:2.15,ease:"power1.inOut"},3.85);
+tl.fromTo("#s08-meldungen-axis",{scaleX:0},{scaleX:1,duration:1.8,ease:"power2.out"},3.9);
+for(var i=0;i<6;i++){tl.fromTo("#s08-meldungen-e"+i,{opacity:0,y:30},{opacity:1,y:0,duration:0.3,ease:"power3.out"},3.95+i*0.27);}
+
+window.__timelines["s08-meldungen"] = tl;
+})();
+      </script>
+    </template>
+  </body>
+</html>
