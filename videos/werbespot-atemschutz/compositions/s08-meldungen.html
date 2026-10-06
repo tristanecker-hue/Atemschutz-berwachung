@@ -143,26 +143,26 @@ var tl = gsap.timeline({ paused: true });
 var Q = function(s){ return "#s08-meldungen " + s; };
 
 tl.fromTo("#s08-meldungen-a",{y:1100,filter:"blur(22px)"},{y:0,filter:"blur(0px)",duration:0.3,ease:"power3.out"},0);
-tl.fromTo("#s08-meldungen-led",{opacity:0.2},{opacity:1,duration:0.06,yoyo:true,repeat:9},0.2);
-tl.fromTo("#s08-meldungen-sub",{opacity:0},{opacity:1,duration:0.2},0.25);
+tl.fromTo("#s08-meldungen-led",{opacity:0.2},{opacity:1,duration:0.06,yoyo:true,repeat:19},0.85);
+tl.fromTo("#s08-meldungen-sub",{opacity:0},{opacity:1,duration:0.2},0.85);
 function tap(at,x,y){tl.set("#s08-meldungen-r",{left:x,top:y},at);tl.fromTo("#s08-meldungen-r",{scale:0.3,opacity:1},{scale:1.6,opacity:0,duration:0.4},at);}
-tap(1.1,1110,282);
-tl.fromTo("#s08-meldungen-b1",{backgroundColor:"#12151A"},{backgroundColor:"#3E8E41",duration:0.1},1.1);
-tl.fromTo("#s08-meldungen-m1",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},1.25);
-tl.fromTo("#s08-meldungen-m1",{backgroundColor:"rgba(217,72,61,0.35)"},{immediateRender:false,backgroundColor:"rgba(217,72,61,0)",duration:0.8},1.3);
+tap(3.3,1110,282);
+tl.fromTo("#s08-meldungen-b1",{backgroundColor:"#12151A"},{backgroundColor:"#3E8E41",duration:0.1},3.3);
+tl.fromTo("#s08-meldungen-m1",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},3.45);
+tl.fromTo("#s08-meldungen-m1",{backgroundColor:"rgba(217,72,61,0.35)"},{immediateRender:false,backgroundColor:"rgba(217,72,61,0)",duration:0.8},3.5);
 var sub=document.getElementById("s08-meldungen-sub");var so={v:0};
-tl.to(so,{v:1,duration:0.01,onUpdate:function(){sub.textContent=so.v>0.5?"FUNK · «Rückzug.»":"FUNK · «Trupp Müller, Einsatzziel erreicht.»";}},2.4);
-tl.fromTo("#s08-meldungen-led",{opacity:0.2},{immediateRender:false,opacity:1,duration:0.06,yoyo:true,repeat:7},2.4);
-tl.fromTo("#s08-meldungen .mid",{opacity:0,x:80},{opacity:1,x:0,duration:0.25,stagger:0.15,ease:"expo.out"},2.0);
-tap(2.9,1440,282);
-tl.fromTo("#s08-meldungen-b2",{backgroundColor:"#12151A"},{backgroundColor:"#E8912D",duration:0.1},2.9);
-tl.fromTo("#s08-meldungen-m2",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},3.05);
+tl.to(so,{v:1,duration:0.01,onUpdate:function(){sub.textContent=so.v>0.5?"FUNK · «Rückzug.»":"FUNK · «Trupp Müller, Einsatzziel erreicht.»";}},3.35);
+tl.fromTo("#s08-meldungen-led",{opacity:0.2},{immediateRender:false,opacity:1,duration:0.06,yoyo:true,repeat:7},3.35);
+tl.fromTo("#s08-meldungen .mid",{opacity:0,x:80},{opacity:1,x:0,duration:0.25,stagger:0.15,ease:"expo.out"},3.7);
+tap(4.25,1440,282);
+tl.fromTo("#s08-meldungen-b2",{backgroundColor:"#12151A"},{backgroundColor:"#E8912D",duration:0.1},4.25);
+tl.fromTo("#s08-meldungen-m2",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},4.4);
 // timeline in 3D
-tl.to("#s08-meldungen-a",{opacity:0,scale:0.9,duration:0.3},3.7);
-tl.set("#s08-meldungen-tlw",{opacity:1},3.85);
-tl.fromTo("#s08-meldungen-tl",{rotationX:40,x:260,y:0},{rotationX:22,x:-380,duration:2.15,ease:"power1.inOut"},3.85);
-tl.fromTo("#s08-meldungen-axis",{scaleX:0},{scaleX:1,duration:1.8,ease:"power2.out"},3.9);
-for(var i=0;i<6;i++){tl.fromTo("#s08-meldungen-e"+i,{opacity:0,y:30},{opacity:1,y:0,duration:0.3,ease:"power3.out"},3.95+i*0.27);}
+tl.to("#s08-meldungen-a",{opacity:0,scale:0.9,duration:0.2},4.75);
+tl.set("#s08-meldungen-tlw",{opacity:1},4.9);
+tl.fromTo("#s08-meldungen-tl",{rotationX:40,x:260,y:0},{rotationX:22,x:-380,duration:1.1,ease:"power1.inOut"},4.9);
+tl.fromTo("#s08-meldungen-axis",{scaleX:0},{scaleX:1,duration:0.9,ease:"power2.out"},4.9);
+for(var i=0;i<6;i++){tl.fromTo("#s08-meldungen-e"+i,{opacity:0,y:30},{opacity:1,y:0,duration:0.25,ease:"power3.out"},4.95+i*0.15);}
 
 window.__timelines["s08-meldungen"] = tl;
 })();

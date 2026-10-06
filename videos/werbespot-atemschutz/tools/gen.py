@@ -804,8 +804,9 @@ gauge(tl,"%ID%-card",230,226,0.8,4.8);
 tl.to("#%ID%-card",{borderColor:"#E8912D",boxShadow:"0 0 90px rgba(232,145,45,0.55)",duration:0.15},7.0);
 tl.fromTo("#%ID%-push",{opacity:0,y:-120},{opacity:1,y:0,duration:0.35,ease:"expo.out"},7.05);
 // voice-over words
-tl.fromTo("#%ID% .w",{opacity:0,y:30},{opacity:1,y:0,duration:0.22,stagger:0.5,ease:"power3.out"},3.2);
-tl.to("#%ID% .w",{opacity:0,duration:0.2},5.5);
+var W=document.querySelectorAll("#%ID% .w");
+[2.0,3.22,4.15].forEach(function(t,i){tl.fromTo(W[i],{opacity:0,y:30},{opacity:1,y:0,duration:0.22,ease:"power3.out"},t);});
+tl.to("#%ID% .w",{opacity:0,duration:0.2},5.0);
 tl.to("#%ID%-a",{y:-1100,filter:"blur(20px)",duration:0.25,ease:"power3.in"},7.75);
 """
     write_scene(sid, dur, html, css, js)
@@ -856,26 +857,26 @@ def s08():
 """
     js = """
 tl.fromTo("#%ID%-a",{y:1100,filter:"blur(22px)"},{y:0,filter:"blur(0px)",duration:0.3,ease:"power3.out"},0);
-tl.fromTo("#%ID%-led",{opacity:0.2},{opacity:1,duration:0.06,yoyo:true,repeat:9},0.2);
-tl.fromTo("#%ID%-sub",{opacity:0},{opacity:1,duration:0.2},0.25);
+tl.fromTo("#%ID%-led",{opacity:0.2},{opacity:1,duration:0.06,yoyo:true,repeat:19},0.85);
+tl.fromTo("#%ID%-sub",{opacity:0},{opacity:1,duration:0.2},0.85);
 function tap(at,x,y){tl.set("#%ID%-r",{left:x,top:y},at);tl.fromTo("#%ID%-r",{scale:0.3,opacity:1},{scale:1.6,opacity:0,duration:0.4},at);}
-tap(1.1,1110,282);
-tl.fromTo("#%ID%-b1",{backgroundColor:"#12151A"},{backgroundColor:"#3E8E41",duration:0.1},1.1);
-tl.fromTo("#%ID%-m1",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},1.25);
-tl.fromTo("#%ID%-m1",{backgroundColor:"rgba(217,72,61,0.35)"},{immediateRender:false,backgroundColor:"rgba(217,72,61,0)",duration:0.8},1.3);
+tap(3.3,1110,282);
+tl.fromTo("#%ID%-b1",{backgroundColor:"#12151A"},{backgroundColor:"#3E8E41",duration:0.1},3.3);
+tl.fromTo("#%ID%-m1",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},3.45);
+tl.fromTo("#%ID%-m1",{backgroundColor:"rgba(217,72,61,0.35)"},{immediateRender:false,backgroundColor:"rgba(217,72,61,0)",duration:0.8},3.5);
 var sub=document.getElementById("%ID%-sub");var so={v:0};
-tl.to(so,{v:1,duration:0.01,onUpdate:function(){sub.textContent=so.v>0.5?"FUNK · «Rückzug.»":"FUNK · «Trupp Müller, Einsatzziel erreicht.»";}},2.4);
-tl.fromTo("#%ID%-led",{opacity:0.2},{immediateRender:false,opacity:1,duration:0.06,yoyo:true,repeat:7},2.4);
-tl.fromTo("#%ID% .mid",{opacity:0,x:80},{opacity:1,x:0,duration:0.25,stagger:0.15,ease:"expo.out"},2.0);
-tap(2.9,1440,282);
-tl.fromTo("#%ID%-b2",{backgroundColor:"#12151A"},{backgroundColor:"#E8912D",duration:0.1},2.9);
-tl.fromTo("#%ID%-m2",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},3.05);
+tl.to(so,{v:1,duration:0.01,onUpdate:function(){sub.textContent=so.v>0.5?"FUNK · «Rückzug.»":"FUNK · «Trupp Müller, Einsatzziel erreicht.»";}},3.35);
+tl.fromTo("#%ID%-led",{opacity:0.2},{immediateRender:false,opacity:1,duration:0.06,yoyo:true,repeat:7},3.35);
+tl.fromTo("#%ID% .mid",{opacity:0,x:80},{opacity:1,x:0,duration:0.25,stagger:0.15,ease:"expo.out"},3.7);
+tap(4.25,1440,282);
+tl.fromTo("#%ID%-b2",{backgroundColor:"#12151A"},{backgroundColor:"#E8912D",duration:0.1},4.25);
+tl.fromTo("#%ID%-m2",{opacity:0,x:80},{opacity:1,x:0,duration:0.35,ease:"expo.out"},4.4);
 // timeline in 3D
-tl.to("#%ID%-a",{opacity:0,scale:0.9,duration:0.3},3.7);
-tl.set("#%ID%-tlw",{opacity:1},3.85);
-tl.fromTo("#%ID%-tl",{rotationX:40,x:260,y:0},{rotationX:22,x:-380,duration:2.15,ease:"power1.inOut"},3.85);
-tl.fromTo("#%ID%-axis",{scaleX:0},{scaleX:1,duration:1.8,ease:"power2.out"},3.9);
-for(var i=0;i<6;i++){tl.fromTo("#%ID%-e"+i,{opacity:0,y:30},{opacity:1,y:0,duration:0.3,ease:"power3.out"},3.95+i*0.27);}
+tl.to("#%ID%-a",{opacity:0,scale:0.9,duration:0.2},4.75);
+tl.set("#%ID%-tlw",{opacity:1},4.9);
+tl.fromTo("#%ID%-tl",{rotationX:40,x:260,y:0},{rotationX:22,x:-380,duration:1.1,ease:"power1.inOut"},4.9);
+tl.fromTo("#%ID%-axis",{scaleX:0},{scaleX:1,duration:0.9,ease:"power2.out"},4.9);
+for(var i=0;i<6;i++){tl.fromTo("#%ID%-e"+i,{opacity:0,y:30},{opacity:1,y:0,duration:0.25,ease:"power3.out"},4.95+i*0.15);}
 """
     write_scene(sid, dur, html, css, js)
 
@@ -1055,7 +1056,7 @@ tl.fromTo("#%ID%-c6 .full > div",{scale:0.85},{scale:1.08,duration:0.6,ease:"pow
 # ================================================================ S12 SCHLUSS + ENDCARD (9s)
 @scene
 def s12():
-    sid, dur = "s12-ende", 9
+    sid, dur = "s12-ende", 12
     html = f'''
 <div class="full" style="background:{C['night']}"></div>
 <div class="full ln" id="%ID%-t1"><div class="big" style="font-size:190px">KEINE ZETTEL.</div></div>
@@ -1082,9 +1083,9 @@ tl.fromTo("#%ID%-end",{opacity:0},{opacity:1,duration:0.01},5.5);
 tl.fromTo("#%ID%-ring",{opacity:0,scale:0.7},{opacity:1,scale:1,duration:0.7,ease:"back.out(1.5)"},5.5);
 tl.fromTo("#%ID%-sweep",{x:0},{x:520,duration:0.9,ease:"power2.inOut"},5.9);
 tl.fromTo("#%ID%-name .ch",{opacity:0,x:function(i){return (i-4.5)*60;}},{opacity:1,x:0,duration:0.9,ease:"expo.out"},6.0);
-tl.fromTo("#%ID%-slogan",{opacity:0,y:16},{opacity:1,y:0,duration:0.6,ease:"power3.out"},6.5);
-tl.fromTo("#%ID%-cta",{opacity:0,scale:0.9},{opacity:1,scale:1,duration:0.5,ease:"back.out(2)"},7.4);
-tl.fromTo("#%ID%-fw",{opacity:0},{opacity:1,duration:0.5},7.6);
+tl.fromTo("#%ID%-slogan",{opacity:0,y:16},{opacity:1,y:0,duration:0.6,ease:"power3.out"},7.0);
+tl.fromTo("#%ID%-cta",{opacity:0,scale:0.9},{opacity:1,scale:1,duration:0.5,ease:"back.out(2)"},10.2);
+tl.fromTo("#%ID%-fw",{opacity:0},{opacity:1,duration:0.5},10.4);
 """
     write_scene(sid, dur, html, css, js)
 
