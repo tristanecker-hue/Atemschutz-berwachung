@@ -150,6 +150,25 @@ const fmtAgo = (ms) => {
   return `vor ${Math.floor(ms / 60000)} Minuten`;
 };
 
+function DocFrame({ doc }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let objUrl = null;
+    try {
+      const [head, b64] = doc.dataUrl.split(",");
+      const mime = (head.match(/data:([^;]+)/) || [])[1] || doc.type || "text/html";
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      objUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
+      setUrl(objUrl);
+    } catch (e) { setUrl(doc.dataUrl); }
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
+  }, [doc.dataUrl]);
+  if (!url) return null;
+  return <iframe title={doc.name} src={url} className="au-fullscreen-frame" />;
+}
+
 let idCounter = 1;
 const nextId = () => idCounter++;
 
@@ -576,7 +595,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.28";
+  const APP_VERSION = "2.29";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -1808,7 +1827,7 @@ function AtemschutzUeberwachung() {
         {viewingDoc.type.startsWith("image/") ? (
           <img src={viewingDoc.dataUrl} alt={viewingDoc.name} className="au-fullscreen-img" />
         ) : (
-          <iframe title={viewingDoc.name} src={viewingDoc.dataUrl} className="au-fullscreen-frame" />
+          <DocFrame doc={viewingDoc} />
         )}
       </div>
     </div>
