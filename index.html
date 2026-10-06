@@ -604,7 +604,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.30";
+  const APP_VERSION = "2.31";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -1503,6 +1503,30 @@ function AtemschutzUeberwachung() {
     reader.readAsText(file);
   };
 
+  const [rotating, setRotating] = useState(false);
+  const handleRotateDoc = async (doc) => {
+    if (rotating || !doc || doc.bundled) return;
+    setRotating(true);
+    try {
+      if (!window.PDFLib) {
+        await new Promise((res, rej) => {
+          const sc = document.createElement("script");
+          sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+          sc.onload = res; sc.onerror = rej;
+          document.head.appendChild(sc);
+        });
+      }
+      const { PDFDocument, degrees } = window.PDFLib;
+      const pdf = await PDFDocument.load(doc.dataUrl, { ignoreEncryption: true });
+      pdf.getPages().forEach((p) => p.setRotation(degrees((p.getRotation().angle + 90) % 360)));
+      const out = await pdf.saveAsBase64({ dataUri: true });
+      setInfoDocs((prev) => prev.map((d) => (d.id === doc.id ? { ...d, dataUrl: out } : d)));
+    } catch (e) {
+      setUploadWarning("Drehen nicht möglich (Internet nötig).");
+    }
+    setRotating(false);
+  };
+
   const handleInfoUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
@@ -1832,6 +1856,9 @@ function AtemschutzUeberwachung() {
     <div className="au-fullscreen-viewer">
       <div className="au-fullscreen-header">
         <span className="au-fullscreen-title">{viewingDoc.name}</span>
+        {viewingDoc.type === "application/pdf" && !viewingDoc.bundled && (
+          <button className="au-fullscreen-close" style={{ marginLeft: "auto", marginRight: 8, width: "auto", padding: "0 14px" }} onClick={() => handleRotateDoc(viewingDoc)} disabled={rotating}>{rotating ? "…" : "↻ Drehen"}</button>
+        )}
         <button className="au-fullscreen-close" onClick={() => setViewingDocId(null)} aria-label="Schliessen">✕</button>
       </div>
       <div className="au-fullscreen-body">
