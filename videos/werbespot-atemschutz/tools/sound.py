@@ -253,7 +253,7 @@ add(SFXBUS, 14.6, tone(55, 0.6, 0.3, 4))
 
 # ------------------------------------------------------------- S3 (15-23): questions
 for i, tt in enumerate((15.0, 16.2, 17.4, 18.6, 19.8)):
-    sfx("impact-bass-2", tt, 0.38, length=1.0)
+    sfx("impact-bass-2", tt, 0.2, length=1.0)
     add(SFXBUS, tt + 0.05, bandpass(rng.standard_normal(int(0.25 * SR)), 300, 3000) * 0.12, 1.0, -0.4 + i * 0.2)
 # accelerating clock tick
 tt = 15.0
@@ -267,8 +267,8 @@ t = t_arr(n)
 cluster = pad([hz(62), hz(63), hz(65.5), hz(68)], 7.0, 1400, 2.5, 0.2, 0.01)
 add(music, 15.0, cluster, 0.12)
 add(music, 15.0, drone[: int(7 * SR)] * np.linspace(0.6, 1.0, int(7 * SR)), 0.14)
-sfx("glitch-1", 21.8, 0.55, length=0.9)
-sfx("impact-bass-1", 22.0, 0.9, length=1.4)
+sfx("glitch-1", 21.75, 0.4, length=0.25)
+sfx("impact-bass-1", 21.9, 0.45, length=1.4)
 
 # ------------------------------------------------------------- S4 (23-30): reveal
 add(SFXBUS, 23.65, tone(1046, 0.9, 0.35, 4.5))
@@ -316,7 +316,7 @@ def groove(t0, t1, kick_on=True, hats=True, arp=False, bassline=True, gain=1.0):
 
 groove(30.0, 37.0, arp=False)
 groove(37.0, 51.0, arp=True)
-groove(51.0, 57.0, kick_on=True, hats=False, arp=False, gain=0.8)
+groove(51.0, 57.0, kick_on=True, hats=False, arp=False, gain=0.55)
 groove(57.0, 63.0, arp=True, gain=0.9)
 add(music, 30.0, pad([hz(50), hz(57), hz(62), hz(65)], 21.0, 1100, 1.0, 1.0), 0.16)
 add(music, 51.0, pad([hz(50), hz(57), hz(62)], 12.0, 900, 1.0, 1.0), 0.14)
@@ -373,10 +373,10 @@ for tt in (72.0, 72.4, 72.8, 73.2, 73.6, 74.0):
 
 # ------------------------------------------------------------- 75-84: final words + end card
 for tt, ch in ((75.2, [50, 57, 62, 65]), (76.8, [46, 53, 58, 62]), (78.4, [48, 55, 60, 64])):
-    sfx("impact-bass-1", tt - 0.05, 0.6, length=1.6)
-    add(music, tt - 0.05, pad([hz(c) for c in ch] + [hz(ch[0] - 12)], 1.55, 2600, 0.01, 0.4, 0.006), 0.4)
-    add(music, tt - 0.05, taiko(0.6))
-add(music, 78.4, pad([hz(38), hz(50), hz(57), hz(62), hz(66)], 1.6, 3000, 0.01, 0.3, 0.006), 0.4)
+    sfx("impact-bass-1", tt - 0.05, 0.3, length=1.6)
+    add(music, tt - 0.05, pad([hz(c) for c in ch] + [hz(ch[0] - 12)], 1.55, 2600, 0.01, 0.4, 0.006), 0.25)
+    add(music, tt - 0.05, taiko(0.35))
+add(music, 78.4, pad([hz(38), hz(50), hz(57), hz(62), hz(66)], 1.6, 3000, 0.01, 0.3, 0.006), 0.15)
 # hard stop at 80.0 handled by the music gate below
 n = int(3.5 * SR)
 t = t_arr(n)
@@ -420,7 +420,7 @@ def measure_lufs(path):
 vo_bus = [np.zeros(N), np.zeros(N)]
 for name, start, a, b, tempo in VO:
     path = os.path.join(ROOT, "assets", "vo", name + ".mp3")
-    gain_db = VO_TARGET - measure_lufs(path)
+    gain_db = VO_TARGET - measure_lufs(path) + (6.0 if name.startswith("funk") else 0.0)
     chain = "highpass=f=85,acompressor=threshold=-22dB:ratio=3:attack=5:release=120:makeup=1"
     if name.startswith("funk"):
         chain = "highpass=f=300,lowpass=f=3000,acrusher=bits=10:mix=0.25,acompressor=threshold=-25dB:ratio=6"
@@ -452,15 +452,16 @@ for i in range(0, N, 64):  # attack instantly, release over ~350 ms (block-wise 
     target = env[i:i + 64].max()
     acc = target if target > acc else acc * rel ** 64
     duck[i:i + 64] = acc
-L *= 1 - 0.6 * duck
-R *= 1 - 0.6 * duck
+L *= 1 - 0.75 * duck
+R *= 1 - 0.75 * duck
 L += music[0] * gate * (1 - 0.82 * duck)
 R += music[1] * gate * (1 - 0.82 * duck)
-L += vo_bus[0] * 2.6
-R += vo_bus[1] * 2.6
+L += vo_bus[0] * 3.2
+R += vo_bus[1] * 3.2
 
 # ------------------------------------------------------------- master
 mix = np.stack([L, R], axis=1)
+mix /= max(1e-9, np.max(np.abs(mix)))
 mix = np.tanh(mix * 1.1) / np.tanh(1.1)
 mix *= 0.89 / max(1e-9, np.max(np.abs(mix)))
 os.makedirs(os.path.join(ROOT, "assets", "audio"), exist_ok=True)
