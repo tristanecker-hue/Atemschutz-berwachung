@@ -655,7 +655,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.36";
+  const APP_VERSION = "2.37";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -3747,6 +3747,20 @@ const LOGIN_USERNAME_KEY = "atemschutz_last_username_local";
 
 function AuthGate() {
   const [authState, setAuthState] = useState("loading"); // loading | out | in
+  // Pinch-Zoom der Seite sperren (iOS); nur im Dokument-Viewer bleibt Zoomen erlaubt.
+  useEffect(() => {
+    const block = (e) => {
+      const t = e.target;
+      if (t && t.closest && t.closest(".au-fullscreen-viewer")) return;
+      e.preventDefault();
+    };
+    document.addEventListener("gesturestart", block, { passive: false });
+    document.addEventListener("gesturechange", block, { passive: false });
+    return () => {
+      document.removeEventListener("gesturestart", block);
+      document.removeEventListener("gesturechange", block);
+    };
+  }, []);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -3802,7 +3816,7 @@ function AuthGate() {
 
   return (
     <div style={{ minHeight: "100vh", boxSizing: "border-box", background: "#14171B", color: "#E8EAED", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap'); html, body { margin: 0; background: #14171B; max-width: 100%; overflow-x: hidden; overscroll-behavior: none; touch-action: pan-y; } #root { overflow-x: hidden; max-width: 100vw; }`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap'); input, select, textarea { font-size: 16px !important; } html, body { margin: 0; background: #14171B; max-width: 100%; overflow-x: hidden; overscroll-behavior: none; touch-action: pan-y; } #root { overflow-x: hidden; max-width: 100vw; }`}</style>
       <form onSubmit={login} style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
         <div style={{ width: 170, height: 170, margin: "0 auto 24px", background: "#14171A", borderRadius: 30, padding: 14, boxSizing: "border-box", boxShadow: "0 4px 18px rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <img src={LOGO_SRC} alt="Feuerwehr Zuchwil" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
