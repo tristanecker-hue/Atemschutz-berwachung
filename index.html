@@ -679,7 +679,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.46";
+  const APP_VERSION = "2.47";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -2737,7 +2737,7 @@ function AtemschutzUeberwachung() {
           )}
 
           <div className="au-start-bottom">
-          {weather && weather.current && (() => {
+          {!showInfoLibrary && weather && weather.current && (() => {
             const [ic, txt] = wxInfo(weather.current.weather_code);
             const times = (weather.hourly && weather.hourly.time) || [];
             const nowIso = new Date(now);
