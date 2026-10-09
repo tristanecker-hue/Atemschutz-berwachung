@@ -679,7 +679,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.44";
+  const APP_VERSION = "2.45";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -1933,7 +1933,8 @@ function AtemschutzUeberwachung() {
 
   const BUNDLED_DOCS = [
     { id: "bundled-kapitel7", name: "Kapitel 7 – Atemschutz (Zusammenfassung)", type: "text/html", dataUrl: ATEMSCHUTZ_KAPITEL7_SRC, bundled: true },
-    { id: "bundled-kapitel12", name: "Kapitel 12 – ABC-Einsatz", type: "application/pdf", url: "kapitel12.pdf", bundled: true },
+    { id: "bundled-kapitel7-voll", name: "Kapitel 7 – Atemschutz (komplett)", type: "application/pdf", url: "kapitel7.pdf", bundled: true, icon: "😷" },
+    { id: "bundled-kapitel12", name: "Kapitel 12 – ABC-Einsatz", type: "application/pdf", url: "kapitel12.pdf", bundled: true, icon: "☣️" },
   ];
 
   const viewingDoc = [...BUNDLED_DOCS, ...infoDocs].find((d) => d.id === viewingDocId);
@@ -1946,7 +1947,7 @@ function AtemschutzUeberwachung() {
           {BUNDLED_DOCS.map((doc) => (
             <div key={doc.id} className="au-info-thumb" onClick={() => setViewingDocId(doc.id)}>
               <div className="au-info-thumb-media">
-                {doc.id === "bundled-kapitel7" ? <img src={ATEMSCHUTZ_KAPITEL7_COVER} alt={doc.name} /> : <div className="au-info-filetile">☣️</div>}
+                {doc.id === "bundled-kapitel7" ? <img src={ATEMSCHUTZ_KAPITEL7_COVER} alt={doc.name} /> : <div className="au-info-filetile">{doc.icon || "📄"}</div>}
               </div>
               <div className="au-info-thumb-name">{doc.name}</div>
             </div>

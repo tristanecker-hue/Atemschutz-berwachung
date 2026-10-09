@@ -8,7 +8,8 @@ const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.json",
-  "./kapitel12.pdf"
+  "./kapitel12.pdf",
+  "./kapitel7.pdf"
 ];
 
 self.addEventListener("install", (event) => {
