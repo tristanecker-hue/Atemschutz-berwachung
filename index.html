@@ -672,7 +672,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.41";
+  const APP_VERSION = "2.42";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -689,6 +689,7 @@ function AtemschutzUeberwachung() {
   const notifiedStateRef = useRef({});
   const artNotifiedRef = useRef({});
   const [weather, setWeather] = useState(null);
+  const [flare, setFlare] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -2337,13 +2338,19 @@ function AtemschutzUeberwachung() {
       .au-online-dot.online { background: #3DBE6C; }
       .au-online-dot.offline { background: #E24C4C; }
       .au-start-gear { background: rgba(255,255,255,0.08); border: none; border-radius: 10px; width: 38px; height: 38px; font-size: 17px; color: #C7CDD3; }
-            .au-start-clock-big { font-family: 'Inter', -apple-system, sans-serif; font-size: 44px; font-weight: 500; color: #F5F6F7; margin-bottom: 22px; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
-      .au-start-logo { position: relative; overflow: hidden; width: 100%; max-width: 330px; background: #FAFFFE; border-radius: 22px; padding: 14px 16px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; margin-bottom: 26px; animation: au-logo-glow 3.6s ease-in-out infinite; transition: transform 0.15s ease; cursor: pointer; }
-      .au-start-logo:active { transform: scale(0.97); }
+            .au-start-clock-big { font-family: 'Inter', -apple-system, sans-serif; font-size: 44px; font-weight: 500; color: #F5F6F7; margin-bottom: 40px; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; position: relative; z-index: 2; }
+      .au-start-logo-wrap { position: relative; width: 100%; max-width: 330px; margin-bottom: 26px; cursor: pointer; transition: transform 0.15s ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      .au-start-logo-wrap:active { transform: scale(0.97); }
+      .au-flames { position: absolute; left: 0; right: 0; top: 0; height: 0; z-index: 0; pointer-events: none; }
+      .au-flame { position: absolute; bottom: 8px; width: 9%; transform-origin: 50% 100%; animation: au-flicker 1.4s ease-in-out infinite; opacity: 0.85; filter: drop-shadow(0 0 4px rgba(255,140,30,0.8)); transition: transform 0.25s ease, opacity 0.25s ease, filter 0.25s ease; }
+      .au-start-logo-wrap.flare .au-flame { opacity: 1; filter: drop-shadow(0 0 9px rgba(255,150,30,1)) brightness(1.25); height: 50px !important; animation-duration: 0.45s !important; }
+      .au-start-logo-wrap.flare .au-start-logo { box-shadow: 0 0 46px 8px rgba(255,120,30,0.65), 0 10px 30px -12px rgba(0,0,0,0.7); animation: none; }
+      @keyframes au-flicker { 0%, 100% { transform: scaleY(0.82) scaleX(1) rotate(-3deg); } 25% { transform: scaleY(1.12) scaleX(0.9) rotate(2deg); } 50% { transform: scaleY(0.95) scaleX(1.08) rotate(-2deg); } 75% { transform: scaleY(1.2) scaleX(0.92) rotate(3deg); } }
+      .au-start-logo { position: relative; z-index: 1; overflow: hidden; width: 100%; background: #FAFFFE; border-radius: 22px; padding: 14px 16px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; animation: au-logo-glow 3.6s ease-in-out infinite; transition: box-shadow 0.25s ease; }
       .au-start-logo::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 40%; left: -60%; background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,214,150,0.55) 50%, rgba(255,255,255,0) 100%); transform: skewX(-18deg); animation: au-logo-shine 5.5s ease-in-out infinite; pointer-events: none; }
       @keyframes au-logo-glow { 0%, 100% { box-shadow: 0 0 18px 0 rgba(232,171,82,0.18), 0 10px 30px -12px rgba(0,0,0,0.7); } 50% { box-shadow: 0 0 38px 4px rgba(232,171,82,0.42), 0 10px 30px -12px rgba(0,0,0,0.7); } }
       @keyframes au-logo-shine { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
-      @media (prefers-reduced-motion: reduce) { .au-start-logo, .au-start-logo::after { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { .au-start-logo, .au-start-logo::after, .au-flame { animation: none; } }
       .au-start-logo img { width: 100%; height: auto; display: block; }
       .au-start-greet { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.02em; margin-bottom: 30px; color: #F5F6F7; }
       .au-start-train { background: #F5A623; color: #1A1300; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 999px; margin: -14px 0 20px; }
@@ -2690,8 +2697,33 @@ function AtemschutzUeberwachung() {
         {trainingMode && <div className="au-training-banner au-training-banner-start">🎓 ÜBUNGSMODUS AKTIV</div>}
         <div className="au-start">
           <div className="au-start-clock-big">{fmtClock(new Date(now))}</div>
-          <div className="au-start-logo" onClick={refreshApp} role="button" aria-label="Logo antippen zum Aktualisieren">
-            <img src={LOGO_WORDMARK_SRC} alt="Feuerwehr Zuchwil" />
+          <div
+            className={`au-start-logo-wrap${flare ? " flare" : ""}`}
+            onPointerDown={() => setFlare(true)}
+            onPointerUp={() => setFlare(false)}
+            onPointerCancel={() => setFlare(false)}
+            onPointerLeave={() => setFlare(false)}
+            onClick={() => { setFlare(true); setTimeout(refreshApp, 700); }}
+            role="button"
+            aria-label="Logo antippen zum Aktualisieren"
+          >
+            <div className="au-flames" aria-hidden="true">
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                <svg key={i} className="au-flame" viewBox="0 0 20 46" style={{ left: `${2 + i * 8.7}%`, animationDelay: `${(i * 0.37) % 1.6}s`, animationDuration: `${1.1 + ((i * 7) % 5) * 0.18}s`, height: `${24 + ((i * 5) % 4) * 5}px` }}>
+                  <defs>
+                    <linearGradient id={`flg${i}`} x1="0" y1="1" x2="0" y2="0">
+                      <stop offset="0" stopColor="#E0391A" />
+                      <stop offset="0.55" stopColor="#F28A1E" />
+                      <stop offset="1" stopColor="#FFD35C" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M10 0 C13 13 21 20 19 33 C18 44 2 44 1 33 C-1 20 7 13 10 0 Z" fill={`url(#flg${i})`} />
+                </svg>
+              ))}
+            </div>
+            <div className="au-start-logo">
+              <img src={LOGO_WORDMARK_SRC} alt="Feuerwehr Zuchwil" />
+            </div>
           </div>
           <div className="au-start-greet">
             {(() => {
