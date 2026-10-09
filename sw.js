@@ -7,7 +7,8 @@ const CACHE_NAME = "atemschutz-cache-v1";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./manifest.json"
+  "./manifest.json",
+  "./kapitel12.pdf"
 ];
 
 self.addEventListener("install", (event) => {

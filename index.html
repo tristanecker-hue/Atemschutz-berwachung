@@ -195,9 +195,16 @@ function PdfPages({ doc, onFail }) {
         }
         const lib = window.pdfjsLib;
         lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        const bin = atob(doc.dataUrl.split(",")[1]);
-        const arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        let arr;
+        if (doc.url) {
+          const r = await fetch(doc.url);
+          if (!r.ok) throw new Error("fetch");
+          arr = new Uint8Array(await r.arrayBuffer());
+        } else {
+          const bin = atob(doc.dataUrl.split(",")[1]);
+          arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        }
         const pdf = await lib.getDocument({ data: arr }).promise;
         const box = boxRef.current;
         if (!box || cancelled) return;
@@ -223,7 +230,7 @@ function PdfPages({ doc, onFail }) {
       } catch (e) { if (!cancelled) onFail(); }
     })();
     return () => { cancelled = true; };
-  }, [doc.dataUrl]);
+  }, [doc.url || doc.dataUrl]);
   return <div ref={boxRef} style={{ width: "100%", height: "100%", overflowY: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: 8, boxSizing: "border-box", color: "#9AA1AB", fontSize: 13 }}>Lade Dokument …</div>;
 }
 
@@ -672,7 +679,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.43";
+  const APP_VERSION = "2.44";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -1926,6 +1933,7 @@ function AtemschutzUeberwachung() {
 
   const BUNDLED_DOCS = [
     { id: "bundled-kapitel7", name: "Kapitel 7 – Atemschutz (Zusammenfassung)", type: "text/html", dataUrl: ATEMSCHUTZ_KAPITEL7_SRC, bundled: true },
+    { id: "bundled-kapitel12", name: "Kapitel 12 – ABC-Einsatz", type: "application/pdf", url: "kapitel12.pdf", bundled: true },
   ];
 
   const viewingDoc = [...BUNDLED_DOCS, ...infoDocs].find((d) => d.id === viewingDocId);
@@ -1938,7 +1946,7 @@ function AtemschutzUeberwachung() {
           {BUNDLED_DOCS.map((doc) => (
             <div key={doc.id} className="au-info-thumb" onClick={() => setViewingDocId(doc.id)}>
               <div className="au-info-thumb-media">
-                <img src={ATEMSCHUTZ_KAPITEL7_COVER} alt={doc.name} />
+                {doc.id === "bundled-kapitel7" ? <img src={ATEMSCHUTZ_KAPITEL7_COVER} alt={doc.name} /> : <div className="au-info-filetile">☣️</div>}
               </div>
               <div className="au-info-thumb-name">{doc.name}</div>
             </div>
@@ -2368,6 +2376,7 @@ function AtemschutzUeberwachung() {
       .au-start-eyebrow { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #8A93A0; margin: 0 0 8px; }
       .au-start-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.15; margin: 0 0 30px; max-width: 320px; }
       .au-start-btn { width: 100%; max-width: 300px; padding: 15px 10px; border-radius: 22px; white-space: nowrap; border: none; background: #E8AB52; color: #12151A; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 12px; }
+      .au-start-btn-wrap { white-space: normal; }
       .au-start-btn-secondary { width: 100%; max-width: 320px; padding: 12px; border-radius: 11px; border: 1.5px solid #3A424B; background: transparent; color: #C7CDD3; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; }
       .au-start-resume { margin-top: 14px; font-size: 12.5px; color: #F2A93B; background: none; border: none; }
 
@@ -2693,6 +2702,20 @@ function AtemschutzUeberwachung() {
           <div className="au-start-logo" onClick={refreshApp} role="button" aria-label="Logo antippen zum Aktualisieren">
             <img src={LOGO_WORDMARK_SRC} alt="Feuerwehr Zuchwil" />
           </div>
+          {showInfoLibrary ? (
+            <>
+              <div className="au-start-greet">Atemschutz Infos</div>
+              {BUNDLED_DOCS.map((doc) => (
+                <button key={doc.id} className="au-start-btn au-start-btn-wrap" onClick={() => setViewingDocId(doc.id)}>{doc.name}</button>
+              ))}
+              {infoDocs.map((doc) => (
+                <button key={doc.id} className="au-start-btn au-start-btn-wrap" onClick={() => setViewingDocId(doc.id)}>{doc.name}</button>
+              ))}
+              <div className="au-row-sub" style={{ marginTop: 10, textAlign: "center", color: "#8E9097" }}>Eigene Dokumente/Fotos: <b>Optionen (⚙) → Atemschutz-Infos</b></div>
+              <button className="au-start-btn-secondary" style={{ marginTop: 18 }} onClick={() => setShowInfoLibrary(false)}>← Zurück</button>
+            </>
+          ) : (
+          <>
           <div className="au-start-greet">
             {(() => {
               const h = new Date(now).getHours();
@@ -2709,6 +2732,8 @@ function AtemschutzUeberwachung() {
             <button className="au-start-resume" onClick={() => setScreen("operation")}>
               {activeTrupps.length} Trupp{activeTrupps.length === 1 ? "" : "s"} bereits im Einsatz →
             </button>
+          )}
+          </>
           )}
 
           <div className="au-start-bottom">
@@ -2748,7 +2773,7 @@ function AtemschutzUeberwachung() {
         <div className="au-start-version">
           <span className={`au-online-dot ${isOnline ? "online" : "offline"}`} /> {isOnline ? "" : "Offline · "}V{APP_VERSION} · Logo antippen zum Aktualisieren
         </div>
-        {infoLibraryModal}
+        
         {infoDocViewerModal}
         {settingsModal}
         {adminModal}
@@ -3971,6 +3996,7 @@ function AuthGate() {
     </div>
   );
 }
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(<AuthGate />);
 
