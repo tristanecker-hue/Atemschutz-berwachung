@@ -680,7 +680,7 @@ function AtemschutzUeberwachung() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const ADMIN_PASSWORD = "4528";
-  const APP_VERSION = "2.55";
+  const APP_VERSION = "2.56";
   const APP_VERSION_DATE = "27.09.2026";
   const [loaded, setLoaded] = useState(false);
   const [trainingMode, setTrainingMode] = useState(false);
@@ -751,6 +751,8 @@ function AtemschutzUeberwachung() {
   const [confirmingDeleteEinsatz, setConfirmingDeleteEinsatz] = useState(null);
   const [infoDocs, setInfoDocs] = useState([]);
   const [mannschaft, setMannschaft] = useState([]);
+  const mannschaftDirty = useRef(false);
+  const changeMannschaft = (list) => { mannschaftDirty.current = true; setMannschaft(list); };
   const [showInfoLibrary, setShowInfoLibrary] = useState(false);
   const [viewingDocId, setViewingDocId] = useState(null);
   const [editingDocNameId, setEditingDocNameId] = useState(null);
@@ -1056,11 +1058,14 @@ function AtemschutzUeberwachung() {
   }, [infoDocs, loaded]);
 
   useEffect(() => {
-    if (!loaded) return;
+    // Nur schreiben, wenn die Liste hier bewusst geändert wurde – nie beim blossen Laden,
+    // sonst könnte ein Gerät mit leerem Zwischenstand die gemeinsame Liste überschreiben.
+    if (!loaded || !mannschaftDirty.current) return;
+    mannschaftDirty.current = false;
     (async () => {
-      try {
-        await window.storage.set(MANNSCHAFT_KEY, JSON.stringify(mannschaft), false);
-      } catch (e) {}
+      let ok = false;
+      try { ok = !!(await window.storage.set(MANNSCHAFT_KEY, JSON.stringify(mannschaft), false)); } catch (e) {}
+      if (!ok) { try { alert("Mannschaftsliste konnte nicht für alle Geräte gespeichert werden. Bitte Internet/Anmeldung prüfen und erneut versuchen."); } catch (e) {} }
     })();
   }, [mannschaft, loaded]);
 
@@ -1621,7 +1626,7 @@ function AtemschutzUeberwachung() {
         }
         if (Array.isArray(data.trupps)) setTrupps(data.trupps);
         if (Array.isArray(data.einsaetze)) setEinsaetze(data.einsaetze);
-        if (Array.isArray(data.mannschaft)) setMannschaft(data.mannschaft);
+        if (Array.isArray(data.mannschaft)) changeMannschaft(data.mannschaft);
         if (data.settings) setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
         setBackupMessage("Backup vom " + (data.exportedAt ? new Date(data.exportedAt).toLocaleString("de-DE") : "?") + " wiederhergestellt.");
       } catch (e2) {
@@ -1736,12 +1741,12 @@ function AtemschutzUeberwachung() {
         .map((s) => s.trim())
         .filter(Boolean);
       const unique = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, "de"));
-      setMannschaft(unique);
+      changeMannschaft(unique);
     };
     reader.readAsText(file);
     e.target.value = "";
   };
-  const clearMannschaft = () => setMannschaft([]);
+  const clearMannschaft = () => changeMannschaft([]);
 
   useEffect(() => {
     if (!printMode) return;
