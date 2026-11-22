@@ -3,7 +3,7 @@
 // aber bei vorhandener Verbindung IMMER die neueste Version laden (kein "Steckenbleiben"
 // auf einer alten Version bei einem Sicherheits-Tool).
 
-const CACHE_NAME = "atemschutz-cache-v1";
+const CACHE_NAME = "atemschutz-cache-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
